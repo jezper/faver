@@ -1,0 +1,15 @@
+# Xcode user data (personal settings, not shared)
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/contents.xcworkspacedata
+
+# Build artifacts
+build/
+DerivedData/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store

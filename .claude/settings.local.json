@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcode-select:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(swift:*)",
+      "Bash(git -C /Users/jezper.lorne/Projects/faver init:*)",
+      "Bash(git -C /Users/jezper.lorne/Projects/faver remote add:*)",
+      "Bash(git -C /Users/jezper.lorne/Projects/faver fetch origin)",
+      "Bash(git -C /Users/jezper.lorne/Projects/faver checkout:*)",
+      "Bash(git -C /Users/jezper.lorne/Projects/faver branch -r)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}
