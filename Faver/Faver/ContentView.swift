@@ -4,12 +4,12 @@ import SwiftUI
 // MARK: - Theme
 
 extension Color {
-    /// Faver's signature warm amber — used as app tint, progress bars, and CTAs.
+    /// Faver's signature warm amber — tint, progress bars, CTAs.
     static let faver = Color(red: 0.925, green: 0.494, blue: 0.188)
-    /// Card surface on the near-black dark background (~#1E1E1E)
-    static let faverCard = Color(white: 0.12)
-    /// Hairline border on dark cards
-    static let faverCardBorder = Color.white.opacity(0.07)
+    /// Warm cream app background — pairs with amber accent and photo cards.
+    static let faverBackground = Color(red: 0.976, green: 0.963, blue: 0.945)
+    /// Warm amber-tinted shadow colour (use .opacity() inline).
+    static let faverShadow = Color(red: 0.65, green: 0.35, blue: 0.06)
 }
 
 // MARK: - ContentView
@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var showingMap = false
     @State private var showingSettings = false
     @State private var showingProgressInfo = false
+    @State private var listAppeared = false
 
     var progressPercent: Int {
         guard photoLibrary.totalCount > 0 else { return 0 }
@@ -42,9 +43,9 @@ struct ContentView: View {
                 welcomeView
             }
         }
-        .fontDesign(.rounded)
+        .fontDesign(.default)
         .tint(.faver)
-        .preferredColorScheme(.dark)
+        .background(Color.faverBackground.ignoresSafeArea())
     }
 
     // MARK: - Library
@@ -52,8 +53,11 @@ struct ContentView: View {
     private var libraryView: some View {
         NavigationStack {
             libraryContent
+                .background(Color.faverBackground)
                 .navigationTitle("Faver")
                 .navigationBarTitleDisplayMode(.large)
+                .toolbarBackground(Color.faverBackground, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: { showingSettings = true }) {
@@ -119,9 +123,9 @@ struct ContentView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
-                        .background(Color.faverCard)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.faverCardBorder, lineWidth: 1))
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: Color.faverShadow.opacity(0.12), radius: 12, x: 0, y: 4)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -129,20 +133,33 @@ struct ContentView: View {
 
                     // Year cards — photo-forward, newest first
                     LazyVStack(spacing: 14) {
-                        ForEach(photoLibrary.years) { summary in
+                        ForEach(Array(photoLibrary.years.enumerated()), id: \.element.id) { index, summary in
                             NavigationLink(value: summary.year) {
                                 YearCard(
                                     summary: summary,
                                     sampleAssets: photoLibrary.sampleAssets(for: summary.year)
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableButtonStyle())
                             .accessibilityLabel("\(summary.year), \(summary.clusterCount) sets, \(summary.toReviewCount) photos to review")
+                            .opacity(listAppeared ? 1 : 0)
+                            .offset(y: listAppeared ? 0 : 28)
+                            .animation(
+                                .spring(response: 0.55, dampingFraction: 0.82)
+                                    .delay(Double(index) * 0.055),
+                                value: listAppeared
+                            )
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 32)
+                    .onAppear {
+                        listAppeared = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            listAppeared = true
+                        }
+                    }
                 }
             }
         }
@@ -155,7 +172,7 @@ struct ContentView: View {
             Spacer()
             VStack(spacing: 6) {
                 Text("Faver")
-                    .font(.system(size: 52, weight: .black, design: .rounded))
+                    .font(.system(size: 56, weight: .black, design: .serif))
                 Text("Find the moments worth keeping.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -181,7 +198,7 @@ struct ContentView: View {
             Spacer()
             VStack(spacing: 8) {
                 Text("Faver")
-                    .font(.system(size: 64, weight: .black, design: .rounded))
+                    .font(.system(size: 68, weight: .black, design: .serif))
                 Text("Find the moments\nworth keeping.")
                     .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -276,7 +293,7 @@ private struct YearCard: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(String(summary.year))
-                        .font(.system(size: 52, weight: .black, design: .rounded))
+                        .font(.system(size: 52, weight: .black, design: .serif))
                         .foregroundStyle(.white)
                     Text("\(summary.clusterCount) moments · \(summary.toReviewCount) to review")
                         .font(.caption)
@@ -293,7 +310,7 @@ private struct YearCard: View {
         }
         .frame(height: 240)
         .clipShape(RoundedRectangle(cornerRadius: 22))
-        .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 10)
+        .shadow(color: Color.faverShadow.opacity(0.22), radius: 20, x: 0, y: 8)
         .task(id: summary.id) { await loadThumbnails() }
     }
 
@@ -303,7 +320,7 @@ private struct YearCard: View {
     private var collage: some View {
         GeometryReader { geo in
             if thumbnails.isEmpty {
-                Rectangle().fill(Color(white: 0.18))
+                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
             } else if thumbnails.count == 1 {
                 photoCell(thumbnails[0])
             } else if thumbnails.count == 2 {
@@ -365,6 +382,16 @@ private struct YearCard: View {
                 continuation.resume(returning: image)
             }
         }
+    }
+}
+
+// MARK: - PressableButtonStyle
+
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.965 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
 

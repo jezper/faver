@@ -40,8 +40,8 @@ struct ClusterCard: View {
             .glassEffect(in: RoundedRectangle(cornerRadius: 6))
         }
         .frame(height: 200)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 7)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .shadow(color: Color(red: 0.65, green: 0.35, blue: 0.06).opacity(0.18), radius: 16, x: 0, y: 6)
         .task(id: cluster.id) {
             await loadThumbnails()
             locationName = await GeocodingCache.shared.lookup(cluster.firstLocationAsset?.location)
@@ -54,7 +54,7 @@ struct ClusterCard: View {
     private var collage: some View {
         GeometryReader { geo in
             if thumbnails.isEmpty {
-                Rectangle().fill(.secondary.opacity(0.12))
+                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
             } else if thumbnails.count == 1 {
                 photoCell(thumbnails[0])
             } else if thumbnails.count == 2 {
