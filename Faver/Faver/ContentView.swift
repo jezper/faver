@@ -6,6 +6,8 @@ import SwiftUI
 extension Color {
     /// Faver's signature warm amber — tint, progress bars, CTAs.
     static let faver = Color(red: 0.925, green: 0.494, blue: 0.188)
+    /// Darker amber for text on light backgrounds — passes WCAG AA (6.4:1 on faverBackground).
+    static let faverDark = Color(red: 0.58, green: 0.24, blue: 0.04)
     /// Warm cream app background — pairs with amber accent and photo cards.
     static let faverBackground = Color(red: 0.976, green: 0.963, blue: 0.945)
     /// Warm amber-tinted shadow colour (use .opacity() inline).
@@ -289,24 +291,34 @@ private struct YearCard: View {
             // Full-bleed photo mosaic
             collage
 
-            // Liquid Glass info strip
+            // Dark gradient scrim — contrast-safe regardless of photo brightness
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .black.opacity(0.82), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Info overlay on guaranteed-dark ground
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(String(summary.year))
                         .font(.system(size: 52, weight: .black, design: .serif))
                         .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
                     Text("\(summary.clusterCount) moments · \(summary.toReviewCount) to review")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(.white.opacity(0.9))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.6))
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 6))
+            .padding(.vertical, 18)
         }
         .frame(height: 240)
         .clipShape(RoundedRectangle(cornerRadius: 22))

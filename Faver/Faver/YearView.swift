@@ -36,7 +36,7 @@ struct YearView: View {
                             } header: {
                                 Text(section.title.uppercased())
                                     .font(.system(size: 11, weight: .bold, design: .serif))
-                                    .foregroundStyle(Color.faver)
+                                    .foregroundStyle(Color.faverDark)
                                     .tracking(1.5)
                                     .padding(.horizontal, 16)
                                     .padding(.top, 28)

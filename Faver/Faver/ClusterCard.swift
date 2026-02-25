@@ -14,12 +14,23 @@ struct ClusterCard: View {
             // Photo collage
             collage
 
-            // Liquid Glass info strip
+            // Dark gradient scrim — contrast-safe regardless of photo brightness
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .black.opacity(0.80), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Info overlay
             VStack(alignment: .leading, spacing: 3) {
                 Text(cluster.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
+                    .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 1)
 
                 HStack(spacing: 4) {
                     Text(cluster.dateLabel)
@@ -31,13 +42,12 @@ struct ClusterCard: View {
                     Text("\(cluster.count) photos")
                 }
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(.white.opacity(0.88))
                 .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 6))
         }
         .frame(height: 200)
         .clipShape(RoundedRectangle(cornerRadius: 20))
