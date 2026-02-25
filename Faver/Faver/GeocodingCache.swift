@@ -1,4 +1,4 @@
-import CoreLocation
+import MapKit
 
 /// Session-scoped geocoding cache — avoids redundant network calls for locations
 /// already seen during this app launch. Keyed by lat/lon rounded to 2 decimal places
@@ -13,9 +13,10 @@ actor GeocodingCache {
         guard let location else { return nil }
         let key = cacheKey(for: location)
         if let cached = cache[key] { return cached }
-        let placemarks = try? await CLGeocoder().reverseGeocodeLocation(location)
-        guard let p = placemarks?.first else { return nil }
-        let name = p.locality ?? p.subLocality ?? p.administrativeArea
+        guard let request = MKReverseGeocodingRequest(location: location) else { return nil }
+        let mapItems = try? await request.mapItems
+        let placemark = mapItems?.first?.placemark
+        let name = placemark?.locality ?? placemark?.subLocality ?? placemark?.administrativeArea
         if let name { cache[key] = name }
         return name
     }

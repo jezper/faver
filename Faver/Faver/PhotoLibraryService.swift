@@ -64,36 +64,30 @@ class PhotoLibraryService: ObservableObject {
         isLoading = true
         scanProgress = 0
 
-        Task.detached(priority: .userInitiated) { [weak self] in
-            // All I/O on the background thread — keeps main thread free for the first frame
-            let reviewedIDs = ReviewStore.shared.reviewedIDs
-            let modeRaw = UserDefaults.standard.string(forKey: "clusterMode") ?? ClusterMode.smart.rawValue
-            let mode = ClusterMode(rawValue: modeRaw) ?? .smart
-            let gapRaw = UserDefaults.standard.string(forKey: "clusterGap") ?? ClusterGap.medium.rawValue
-            let gap = ClusterGap(rawValue: gapRaw) ?? .medium
-            let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
-            let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
+        // Read all @MainActor-isolated state before crossing any async boundary
+        let reviewedIDs = ReviewStore.shared.reviewedIDs
+        let modeRaw = UserDefaults.standard.string(forKey: "clusterMode") ?? ClusterMode.smart.rawValue
+        let mode = ClusterMode(rawValue: modeRaw) ?? .smart
+        let gapRaw = UserDefaults.standard.string(forKey: "clusterGap") ?? ClusterGap.medium.rawValue
+        let gap = ClusterGap(rawValue: gapRaw) ?? .medium
+        let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
+        let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
 
-            let options = PHFetchOptions()
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        Task {
+            // Phase 1: enumerate assets off the main thread (no PHAsset property access here)
+            let (total, allAssets): (Int, [PHAsset]) = await Task.detached(priority: .userInitiated) {
+                let options = PHFetchOptions()
+                options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+                let result = PHAsset.fetchAssets(with: options)
+                var assets: [PHAsset] = []
+                assets.reserveCapacity(result.count)
+                result.enumerateObjects { asset, _, _ in assets.append(asset) }
+                return (result.count, assets)
+            }.value
 
-            let result = PHAsset.fetchAssets(with: options)
-            let total = result.count
-            var allAssets: [PHAsset] = []
-            allAssets.reserveCapacity(total)
-
-            result.enumerateObjects { asset, index, _ in
-                allAssets.append(asset)
-                // Report scan progress every 500 photos (0 → 0.85)
-                if total > 0, index % 500 == 0 || index == total - 1 {
-                    let progress = min(Double(index + 1) / Double(total), 1.0) * 0.85
-                    Task { @MainActor in self?.scanProgress = progress }
-                }
-            }
-
-            // Phase 2: clustering (0.85 → 1.0)
-            await MainActor.run { self?.scanProgress = 0.88 }
-
+            // Phase 2: clustering — runs on @MainActor because PHAsset property
+            // access (creationDate, location, isFavorite) is @MainActor-isolated in iOS 26
+            scanProgress = 0.88
             let built: [PhotoCluster]
             switch mode {
             case .smart:
@@ -102,12 +96,10 @@ class PhotoLibraryService: ObservableObject {
                 built = buildClusters(from: allAssets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold)
             }
 
-            await MainActor.run {
-                self?.totalCount = total
-                self?.clusters = built
-                self?.scanProgress = 1.0
-                self?.isLoading = false
-            }
+            totalCount = total
+            clusters = built
+            scanProgress = 1.0
+            isLoading = false
         }
     }
 
