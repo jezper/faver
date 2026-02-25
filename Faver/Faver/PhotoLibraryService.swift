@@ -113,6 +113,23 @@ class PhotoLibraryService: ObservableObject {
         ReviewStore.shared.markReviewed(asset.localIdentifier)
     }
 
+    /// Top clusters ordered by suggested-review priority — shown in the home screen hero.
+    /// Scored by event size, GPS presence, and year-ago nostalgia.
+    var suggestedClusters: [PhotoCluster] {
+        Array(filteredClusters.sorted { suggestionScore($0) > suggestionScore($1) }.prefix(5))
+    }
+
+    private func suggestionScore(_ cluster: PhotoCluster) -> Double {
+        var s = Double(cluster.totalInWindow)
+        if cluster.firstLocationAsset?.location != nil { s *= 1.3 }
+        if let date = cluster.anchorDate {
+            let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+            let daysAway = abs(date.timeIntervalSince(yearAgo)) / 86400
+            if daysAway < 14 { s *= 2.0 } else if daysAway < 30 { s *= 1.5 }
+        }
+        return s
+    }
+
     /// Up to `count` representative assets for the given year — one from each of
     /// the first visible clusters of that year, for the year card collage.
     func sampleAssets(for year: Int, count: Int = 3) -> [PHAsset] {

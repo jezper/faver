@@ -21,7 +21,8 @@ struct ContentView: View {
     @State private var showingMap = false
     @State private var showingSettings = false
     @State private var showingProgressInfo = false
-    @State private var listAppeared = false
+    @State private var suggestionIndex = 0
+    @State private var selectedHeroCluster: PhotoCluster?
 
     var progressPercent: Int {
         guard photoLibrary.totalCount > 0 else { return 0 }
@@ -57,7 +58,7 @@ struct ContentView: View {
             libraryContent
                 .background(Color.faverBackground)
                 .navigationTitle("Faver")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(Color.faverBackground, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbar {
@@ -107,62 +108,169 @@ struct ContentView: View {
         } else if photoLibrary.years.isEmpty {
             allDoneView
         } else {
+            mainLibraryView
+        }
+    }
+
+    // MARK: - Main library (new hero layout)
+
+    private var mainLibraryView: some View {
+        GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 0) {
-                    // Location browse button
-                    Button(action: { showingMap = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "map.fill")
-                                .font(.body)
-                                .foregroundStyle(.tint)
-                            Text("Browse by location")
-                                .font(.body)
-                                .foregroundStyle(.tint)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: Color.faverShadow.opacity(0.12), radius: 12, x: 0, y: 4)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
+                    heroSection(screenHeight: geo.size.height)
+                    browseSection
+                }
+                .padding(.bottom, 40)
+            }
+        }
+        .background(Color.faverBackground)
+        .fullScreenCover(item: $selectedHeroCluster, onDismiss: {
+            photoLibrary.loadAssets()
+            suggestionIndex = 0
+        }) { cluster in
+            ReviewView(photoLibrary: photoLibrary, assets: cluster.assetsToReview)
+        }
+    }
 
-                    // Year cards — photo-forward, newest first
-                    LazyVStack(spacing: 14) {
-                        ForEach(Array(photoLibrary.years.enumerated()), id: \.element.id) { index, summary in
-                            NavigationLink(value: summary.year) {
-                                YearCard(
-                                    summary: summary,
-                                    sampleAssets: photoLibrary.sampleAssets(for: summary.year)
-                                )
-                            }
-                            .buttonStyle(PressableButtonStyle())
-                            .accessibilityLabel("\(summary.year), \(summary.clusterCount) sets, \(summary.toReviewCount) photos to review")
-                            .opacity(listAppeared ? 1 : 0)
-                            .offset(y: listAppeared ? 0 : 28)
-                            .animation(
-                                .spring(response: 0.55, dampingFraction: 0.82)
-                                    .delay(Double(index) * 0.055),
-                                value: listAppeared
-                            )
+    // MARK: - Hero
+
+    private func heroSection(screenHeight: CGFloat) -> some View {
+        let suggestions = photoLibrary.suggestedClusters
+        let cluster = suggestionIndex < suggestions.count ? suggestions[suggestionIndex] : suggestions.first
+
+        return ZStack(alignment: .bottom) {
+            // Photo background
+            if let asset = cluster?.assetsToReview.first {
+                HeroPhotoView(asset: asset)
+                    .id(cluster?.id)
+                    .transition(.opacity)
+            } else {
+                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
+            }
+
+            // Gradient scrim — deep enough for legible text on any photo
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .black.opacity(0.88), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Info + CTA
+            VStack(alignment: .leading, spacing: 0) {
+                Text("suggested for you".uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .serif))
+                    .tracking(1.5)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.bottom, 10)
+
+                Text(cluster?.title ?? "")
+                    .font(.system(size: 30, weight: .black, design: .serif))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                    .lineLimit(2)
+                    .padding(.bottom, 6)
+
+                HStack(spacing: 5) {
+                    Text(cluster?.dateLabel ?? "")
+                    Text("·")
+                    Text("\(cluster?.count ?? 0) to review")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.bottom, 24)
+
+                Button(action: {
+                    if let c = cluster {
+                        withAnimation(.spring(response: 0.3)) { selectedHeroCluster = c }
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Text("Review now")
+                            .font(.body.weight(.semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.body.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
+                    .background(Color.faver)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle())
+
+                // Page-dot strip — only shown if there are multiple suggestions
+                if suggestions.count > 1 {
+                    HStack(spacing: 5) {
+                        ForEach(0..<min(suggestions.count, 5), id: \.self) { i in
+                            Capsule()
+                                .fill(i == suggestionIndex
+                                      ? Color.white
+                                      : Color.white.opacity(0.35))
+                                .frame(width: i == suggestionIndex ? 16 : 6, height: 6)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7),
+                                           value: suggestionIndex)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 32)
-                    .onAppear {
-                        listAppeared = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            listAppeared = true
-                        }
+                    .padding(.top, 14)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 48)
+        }
+        .frame(height: screenHeight * 0.68)
+        .animation(.easeInOut(duration: 0.35), value: suggestionIndex)
+        // Horizontal swipe cycles through top suggestions
+        .gesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    if value.translation.width < -40, suggestionIndex < suggestions.count - 1 {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { suggestionIndex += 1 }
+                    } else if value.translation.width > 40, suggestionIndex > 0 {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { suggestionIndex -= 1 }
                     }
                 }
+        )
+    }
+
+    // MARK: - Browse section
+
+    private var browseSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                Text("Your library")
+                    .font(.system(size: 22, weight: .black, design: .serif))
+                Spacer()
+                Button(action: { showingMap = true }) {
+                    Label("Map", systemImage: "map.fill")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color.faver)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(photoLibrary.years) { summary in
+                        NavigationLink(value: summary.year) {
+                            MiniYearCard(
+                                summary: summary,
+                                sampleAssets: photoLibrary.sampleAssets(for: summary.year)
+                            )
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityLabel("\(summary.year), \(summary.clusterCount) moments, \(summary.toReviewCount) to review")
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
         }
     }
@@ -207,8 +315,6 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
             }
             Spacer()
-            // Shows a spinner while iOS initialises the Photos framework
-            // (can take 5-10 s on first authorisation before our progress bar appears)
             Group {
                 if photoLibrary.isLoading {
                     VStack(spacing: 10) {
@@ -278,80 +384,96 @@ struct ContentView: View {
     }
 }
 
-// MARK: - YearCard
+// MARK: - HeroPhotoView
 
-private struct YearCard: View {
+private struct HeroPhotoView: View {
+    let asset: PHAsset
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            } else {
+                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
+            }
+        }
+        .task(id: asset.localIdentifier) {
+            image = await loadImage()
+        }
+    }
+
+    private func loadImage() async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 600, height: 900),
+                contentMode: .aspectFill,
+                options: options
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+    }
+}
+
+// MARK: - MiniYearCard
+
+private struct MiniYearCard: View {
     let summary: YearSummary
     let sampleAssets: [PHAsset]
-
     @State private var thumbnails: [UIImage] = []
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Full-bleed photo mosaic
-            collage
+            // Photo collage (up to 2 photos)
+            if thumbnails.isEmpty {
+                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
+            } else if thumbnails.count == 1 {
+                photoCell(thumbnails[0])
+            } else {
+                HStack(spacing: 2) {
+                    photoCell(thumbnails[0])
+                    photoCell(thumbnails[1])
+                }
+            }
 
-            // Dark gradient scrim — contrast-safe regardless of photo brightness
+            // Gradient scrim
             LinearGradient(
                 stops: [
-                    .init(color: .clear, location: 0.25),
-                    .init(color: .black.opacity(0.82), location: 1.0)
+                    .init(color: .clear, location: 0.2),
+                    .init(color: .black.opacity(0.78), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
 
-            // Info overlay on guaranteed-dark ground
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(summary.year))
-                        .font(.system(size: 52, weight: .black, design: .serif))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
-                    Text("\(summary.clusterCount) moments · \(summary.toReviewCount) to review")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+            // Year + count
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(summary.year))
+                    .font(.system(size: 26, weight: .black, design: .serif))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+                Text("\(summary.toReviewCount) to review")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.7))
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
         }
-        .frame(height: 240)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .shadow(color: Color.faverShadow.opacity(0.22), radius: 20, x: 0, y: 8)
+        .frame(width: 130, height: 170)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.faverShadow.opacity(0.18), radius: 12, x: 0, y: 5)
         .task(id: summary.id) { await loadThumbnails() }
-    }
-
-    // MARK: - Collage
-
-    @ViewBuilder
-    private var collage: some View {
-        GeometryReader { geo in
-            if thumbnails.isEmpty {
-                Rectangle().fill(Color(red: 0.84, green: 0.80, blue: 0.74))
-            } else if thumbnails.count == 1 {
-                photoCell(thumbnails[0])
-            } else if thumbnails.count == 2 {
-                HStack(spacing: 2) {
-                    photoCell(thumbnails[0])
-                    photoCell(thumbnails[1])
-                }
-            } else {
-                HStack(spacing: 2) {
-                    photoCell(thumbnails[0])
-                        .frame(width: geo.size.width * 0.60)
-                    VStack(spacing: 2) {
-                        photoCell(thumbnails[1])
-                        photoCell(thumbnails[2])
-                    }
-                    .frame(width: geo.size.width * 0.40 - 2)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -363,10 +485,8 @@ private struct YearCard: View {
             .clipped()
     }
 
-    // MARK: - Thumbnail loading
-
     private func loadThumbnails() async {
-        let assets = Array(sampleAssets.prefix(3))
+        let assets = Array(sampleAssets.prefix(2))
         var indexed: [(Int, UIImage)] = []
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (i, asset) in assets.enumerated() {
@@ -387,7 +507,7 @@ private struct YearCard: View {
             options.isNetworkAccessAllowed = false
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 320, height: 320),
+                targetSize: CGSize(width: 200, height: 250),
                 contentMode: .aspectFill,
                 options: options
             ) { image, _ in
