@@ -1,140 +1,76 @@
+import Photos
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var photoLibrary: PhotoLibraryService
-    @AppStorage("clusterMode") private var clusterModeRaw: String = ClusterMode.smart.rawValue
-    @AppStorage("clusterGap") private var clusterGapRaw: String = ClusterGap.medium.rawValue
-    @AppStorage("smartSensitivity") private var smartSensitivityRaw: String = SmartSensitivity.balanced.rawValue
-    @AppStorage("minSetSize") private var minSetSizeRaw: Int = 1
+    @ObservedObject var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
 
-    private var clusterMode: ClusterMode {
-        ClusterMode(rawValue: clusterModeRaw) ?? .smart
-    }
-    private var selectedGap: ClusterGap {
-        ClusterGap(rawValue: clusterGapRaw) ?? .medium
-    }
-    private var selectedSensitivity: SmartSensitivity {
-        SmartSensitivity(rawValue: smartSensitivityRaw) ?? .balanced
-    }
-    private var selectedMinSetSize: MinSetSize {
-        MinSetSize(rawValue: minSetSizeRaw) ?? .all
-    }
+    @AppStorage("clusterMode")      private var clusterModeRaw: String = ClusterMode.smart.rawValue
+    @AppStorage("smartSensitivity") private var sensitivityRaw: String = SmartSensitivity.balanced.rawValue
+    @AppStorage("clusterGap")       private var clusterGapRaw:  String = ClusterGap.medium.rawValue
+    @AppStorage("minSetSize")       private var minSetSize:      Int    = 1
 
-    private var filterImpactText: String {
-        let total = photoLibrary.clusters.count
-        guard total > 0 else { return selectedMinSetSize.description }
-        let threshold = selectedMinSetSize.rawValue
-        let matching = threshold <= 1
-            ? total
-            : photoLibrary.clusters.filter { $0.totalInWindow >= threshold }.count
-        let hidden = total - matching
-        if hidden == 0 {
-            return "\(total) sets in your library. \(selectedMinSetSize.description)"
-        }
-        return "\(matching) of \(total) sets match — \(hidden) smaller \(hidden == 1 ? "set" : "sets") hidden."
-    }
+    private var mode:        ClusterMode      { ClusterMode(rawValue: clusterModeRaw)           ?? .smart    }
+    private var sensitivity: SmartSensitivity { SmartSensitivity(rawValue: sensitivityRaw)      ?? .balanced }
+    private var gap:         ClusterGap       { ClusterGap(rawValue: clusterGapRaw)             ?? .medium   }
 
     var body: some View {
         NavigationStack {
-            Form {
-                // Mode + its dependent sub-setting live in one section so the
-                // visual grouping makes the parent→child relationship obvious.
-                Section {
-                    // Primary: mode picker
+            List {
+                Section("Set grouping") {
                     Picker("Mode", selection: $clusterModeRaw) {
-                        ForEach(ClusterMode.allCases, id: \.rawValue) { mode in
-                            Text(mode.label).tag(mode.rawValue)
+                        ForEach(ClusterMode.allCases, id: \.rawValue) { m in
+                            Text(m.label).tag(m.rawValue)
                         }
                     }
                     .pickerStyle(.segmented)
 
-                    Text(clusterMode == .smart
-                         ? "Automatically detects moments using time gaps and location changes."
-                         : "Groups photos by a fixed time window regardless of shooting patterns.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    if clusterMode == .smart {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Sensitivity", systemImage: "slider.horizontal.3")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-
-                            Picker("Sensitivity", selection: $smartSensitivityRaw) {
-                                ForEach(SmartSensitivity.allCases, id: \.rawValue) { s in
-                                    Text(s.label).tag(s.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            Text(selectedSensitivity.description)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Time window", systemImage: "clock")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-
-                            Picker("Time gap", selection: $clusterGapRaw) {
-                                ForEach(ClusterGap.allCases, id: \.rawValue) { gap in
-                                    Text(gap.label).tag(gap.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            Text("Groups photos taken within \(selectedGap.description) of each other into one set.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    Text("Clustering")
-                }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Minimum set size", systemImage: "camera.filters")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-
-                        Picker("Minimum set size", selection: $minSetSizeRaw) {
-                            ForEach(MinSetSize.allCases, id: \.rawValue) { size in
-                                Text(size.label).tag(size.rawValue)
+                    if mode == .smart {
+                        Picker("Sensitivity", selection: $sensitivityRaw) {
+                            ForEach(SmartSensitivity.allCases, id: \.rawValue) { s in
+                                Text(s.label).tag(s.rawValue)
                             }
                         }
                         .pickerStyle(.segmented)
-
-                        Text(filterImpactText)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        Text(sensitivity.description)
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Picker("Gap", selection: $clusterGapRaw) {
+                            ForEach(ClusterGap.allCases, id: \.rawValue) { g in
+                                Text(g.label).tag(g.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(gap.description)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                } header: {
-                    Text("Focus")
-                } footer: {
-                    Text("Filters sets by total photos in the moment — so a 100-photo vacation with half already reviewed still shows up.")
-                        .font(.footnote)
+                }
+
+                Section("Minimum set size") {
+                    Picker("Minimum size", selection: $minSetSize) {
+                        ForEach(MinSetSize.allCases, id: \.rawValue) { s in
+                            Text(s.label).tag(s.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    let current = MinSetSize(rawValue: minSetSize) ?? .all
+                    Text(current.description)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        library.minSize = max(1, minSetSize)
+                        library.load()
+                        dismiss()
+                    }
+                    .foregroundStyle(Color.accent)
                 }
             }
         }
-        .onChange(of: clusterModeRaw) { photoLibrary.loadAssets() }
-        .onChange(of: clusterGapRaw) { photoLibrary.loadAssets() }
-        .onChange(of: smartSensitivityRaw) { photoLibrary.loadAssets() }
-        .onChange(of: minSetSizeRaw) {
-            // Filter is applied instantly — no reload needed
-            photoLibrary.minSetSizeMinimum = max(1, minSetSizeRaw)
-        }
+        .preferredColorScheme(.dark)
     }
 }
