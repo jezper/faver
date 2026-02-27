@@ -453,10 +453,12 @@ private struct MomentCard: View {
     }
 
     private func photoCell(_ image: UIImage) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Color.clear
+            .overlay(
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            )
             .clipped()
     }
 
