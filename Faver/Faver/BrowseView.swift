@@ -13,29 +13,28 @@ struct BrowseView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+                    // One Section per month — direct children of LazyVStack so their
+                    // headers are pinned. Year is embedded in the header, not a separate
+                    // outer section, which is why month pinning now works correctly.
                     ForEach(library.yearSections()) { yearSummary in
-                        Section {
-                            ForEach(library.monthSections(for: yearSummary.year)) { month in
-                                Section {
-                                    ForEach(month.clusters) { cluster in
-                                        ClusterRow(cluster: cluster) {
-                                            let c = cluster
-                                            dismiss()
-                                            Task { @MainActor in
-                                                try? await Task.sleep(nanoseconds: 350_000_000)
-                                                onSelect(c)
-                                            }
+                        ForEach(library.monthSections(for: yearSummary.year)) { month in
+                            Section {
+                                ForEach(month.clusters) { cluster in
+                                    ClusterRow(cluster: cluster) {
+                                        let c = cluster
+                                        dismiss()
+                                        Task { @MainActor in
+                                            try? await Task.sleep(nanoseconds: 350_000_000)
+                                            onSelect(c)
                                         }
-                                        Divider()
-                                            .background(Color.surface2)
-                                            .padding(.leading, 84)
                                     }
-                                } header: {
-                                    monthHeader(month.title)
+                                    Divider()
+                                        .background(Color.surface2)
+                                        .padding(.leading, 84)
                                 }
+                            } header: {
+                                monthHeader(month.title, year: yearSummary.year)
                             }
-                        } header: {
-                            yearHeader(yearSummary)
                         }
                     }
                 }
@@ -56,35 +55,25 @@ struct BrowseView: View {
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Section headers
+    // MARK: - Section header
 
-    private func yearHeader(_ summary: YearSummary) -> some View {
-        HStack {
-            Text(String(summary.year))
-                .font(.system(size: 22, weight: .bold, design: .serif))
-                .foregroundStyle(.white)
-            Spacer()
-            Text("\(summary.clusterCount) sets")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Color.accent)
+    /// Combined sticky header: year (small, subdued) above month (bold, all-caps).
+    /// Shown for every month section — keeps both year and month visible at all times.
+    private func monthHeader(_ title: String, year: Int) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(String(year))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.28))
+            Text(title.uppercased())
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.accent.opacity(0.7))
+                .tracking(1.2)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 28)
-        .padding(.bottom, 6)
-        .frame(maxWidth: .infinity)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.bg)
-    }
-
-    private func monthHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.caption.weight(.bold))
-            .foregroundStyle(Color.accent.opacity(0.7))
-            .tracking(1.2)
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.bg)
     }
 }
 
