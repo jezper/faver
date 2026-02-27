@@ -2,7 +2,7 @@ import Photos
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var library: PhotoLibrary
+    @ObservedObject var library: LibraryService
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("clusterMode")      private var clusterModeRaw: String = ClusterMode.smart.rawValue

@@ -4,7 +4,7 @@ import SwiftUI
 /// Sheet showing every unreviewed moment, grouped by year → month.
 /// Tap a row to dismiss the sheet and open that moment in ReviewView.
 struct BrowseView: View {
-    let library: PhotoLibrary
+    let library: LibraryService
     let onSelect: (PhotoCluster) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -16,19 +16,22 @@ struct BrowseView: View {
                     ForEach(library.yearSections()) { yearSummary in
                         Section {
                             ForEach(library.monthSections(for: yearSummary.year)) { month in
-                                monthHeader(month.title)
-                                ForEach(month.clusters) { cluster in
-                                    ClusterRow(cluster: cluster) {
-                                        let c = cluster
-                                        dismiss()
-                                        Task { @MainActor in
-                                            try? await Task.sleep(nanoseconds: 350_000_000)
-                                            onSelect(c)
+                                Section {
+                                    ForEach(month.clusters) { cluster in
+                                        ClusterRow(cluster: cluster) {
+                                            let c = cluster
+                                            dismiss()
+                                            Task { @MainActor in
+                                                try? await Task.sleep(nanoseconds: 350_000_000)
+                                                onSelect(c)
+                                            }
                                         }
+                                        Divider()
+                                            .background(Color.surface2)
+                                            .padding(.leading, 84)
                                     }
-                                    Divider()
-                                        .background(Color.surface2)
-                                        .padding(.leading, 84)
+                                } header: {
+                                    monthHeader(month.title)
                                 }
                             }
                         } header: {
@@ -80,6 +83,8 @@ struct BrowseView: View {
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bg)
     }
 }
 
@@ -123,10 +128,12 @@ private struct ClusterRow: View {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
+                    .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .frame(width: 56, height: 56)
+        .clipped()
     }
 
     private func loadThumbnail() async -> UIImage? {

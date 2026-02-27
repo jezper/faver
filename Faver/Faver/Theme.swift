@@ -3,16 +3,18 @@ import SwiftUI
 // MARK: - Colours
 
 extension Color {
-    /// Near-black background — #080810
-    static let bg        = Color(red: 0.032, green: 0.032, blue: 0.040)
-    /// Card / sheet surface — #171719
-    static let surface   = Color(red: 0.090, green: 0.090, blue: 0.100)
-    /// Divider / secondary surface — #232328
-    static let surface2  = Color(red: 0.137, green: 0.137, blue: 0.157)
+    /// Dark-charcoal background — #0F0F1A
+    static let bg        = Color(red: 0.059, green: 0.059, blue: 0.102)
+    /// Card / sheet surface — #1A1A27
+    static let surface   = Color(red: 0.102, green: 0.102, blue: 0.153)
+    /// Divider / secondary surface — #26263A
+    static let surface2  = Color(red: 0.149, green: 0.149, blue: 0.227)
     /// Warm amber accent — #FA9500
     static let accent    = Color(red: 0.980, green: 0.584, blue: 0.000)
     /// Accent at 15 % opacity — for pills / badges
     static let accentDim = Color(red: 0.980, green: 0.584, blue: 0.000).opacity(0.15)
+    /// Favorited heart — #F53840 warm red
+    static let heart     = Color(red: 0.96, green: 0.22, blue: 0.24)
 }
 
 // MARK: - Button style

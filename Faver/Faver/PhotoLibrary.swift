@@ -1,8 +1,9 @@
+import Combine
 import Photos
 import SwiftUI
 
 @MainActor
-final class PhotoLibrary: ObservableObject {
+final class LibraryService: ObservableObject {
 
     @Published var authorizationStatus: PHAuthorizationStatus =
         PHPhotoLibrary.authorizationStatus(for: .readWrite)
