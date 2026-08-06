@@ -8,11 +8,6 @@ in small sessions whenever they have a spare moment — on the bus, before bed, 
 The goal is a complete pass of an unfavorited library over time, surfacing what matters
 without pressure.
 
-## My role
-I am a UX designer, not a developer. Explain technical decisions in plain language when they
-affect the experience. When you make architectural choices, briefly say why. Don't assume I
-know Swift or Xcode conventions.
-
 ## Core principles — never compromise these
 - **No deletion. Ever.** Read and favorites-write access only. Never request delete permissions.
 - **Speed and frictionlessness above everything.** Every interaction should feel instant.
@@ -28,10 +23,9 @@ know Swift or Xcode conventions.
 - Progress indicator shows overall library completion — should feel like momentum, not pressure
 
 ## UX rules
-- No confirmation dialogs on the favorite toggle
-- Nothing that adds friction, cognitive load, or anxiety
-- Keep the UI calm, focused, and fast
-- When suggesting UI changes, think like a UX designer who values clarity and emotional tone
+- No confirmation dialogs on the favorite toggle.
+
+Other behaviour/quality/design/a11y rules: inherited from global ~/.claude/CLAUDE.md.
 
 ## QA focus areas
 When testing or looking for edge cases, prioritize:
@@ -104,15 +98,3 @@ called on `onAppear` and `onChange(of: currentIndex)`.
 ### Visual
 Targets iOS 26 — uses `.glassEffect(in: Circle()/Capsule())` on review buttons and map pins
 with no version guard. Navigation bars get glass automatically.
-```
-
----
-
-The technical sections are preserved exactly, and the product/UX intent is now at the top where Claude Code will read it first. To replace the file, open it in nano:
-```
-nano ~/Projects/faver/CLAUDE.md
-```
-
-Select all with **Ctrl + K** (hold it down to delete line by line) — or easier, just delete the file and recreate it:
-```
-rm ~/Projects/faver/CLAUDE.md && nano ~/Projects/faver/CLAUDE.md
