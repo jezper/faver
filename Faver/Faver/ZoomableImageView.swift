@@ -34,11 +34,13 @@ struct ZoomableImageView: View {
             image = nil
             onlyInCloud = false
 
-            let screen = UIScreen.main.bounds.size
-            let scale = UIScreen.main.scale
+            // A fixed target rather than the screen's. UIScreen.main is deprecated, and
+            // this pass exists to put something up instantly; the full-size original
+            // replaces it a moment later anyway. 1600 is past a phone's long edge at 2x
+            // and decodes quickly.
             let local = await Self.requestImage(
                 for: asset,
-                targetSize: CGSize(width: screen.width * scale, height: screen.height * scale),
+                targetSize: CGSize(width: 1600, height: 1600),
                 allowsNetwork: false
             )
             if Task.isCancelled { return }

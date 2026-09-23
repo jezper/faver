@@ -37,7 +37,7 @@ nonisolated enum ClusterGap: String, CaseIterable {
 /// fixed when it is fetched, and the Photos framework hands the same instance to every
 /// thread that asks. That makes it safe to read off the main actor, which is what lets
 /// clustering run without freezing the app.
-struct PhotoCluster: Identifiable, @unchecked Sendable {
+nonisolated struct PhotoCluster: Identifiable, @unchecked Sendable {
     let id: String
     let assetsToReview: [PHAsset]
     let totalInWindow: Int
