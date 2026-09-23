@@ -45,6 +45,30 @@ glöms bort, och Apple vägrar ta emot ett byggnummer som redan finns.
 
 ## Att veta
 
-- Appen kräver iOS 26.2 eller senare. Höjs vid uppgraderingen till 27.
-- Xcode 27 kräver macOS 26.6. Neo står på 26.5 och måste uppdateras först,
-  vilket kräver omstart.
+- Appen kräver iOS 26.2 och **behåller det**. Beslut 2026-09-22.
+- Xcode 27 kräver macOS 26.6. Neo står på 26.5. Omstarten är **uppskjuten** tills
+  Jezper har tid att sitta bredvid. Nästan inget designarbete väntar på den:
+  Liquid Glass finns redan i iOS 26.
+- **CLAUDE.md har glidit från koden.** Den beskriver `PhotoLibraryService`,
+  `markReviewed`, `clusters`, `totalCount` och `.glassEffect`. Koden har
+  `LibraryService`, `markSeen`, `totalAssets`, och noll glassEffect-anrop.
+  Rätta vid nästa ändring i respektive fil.
+
+---
+
+## Hittat vid genomgången 2026-09-22
+
+Två fel som bryter mot appens egna löften, båda verifierade i kod:
+
+1. **Framstegen sparas aldrig medan du bläddrar.** `ReviewView.swift:168` och
+   `:237` är de enda ställen som skriver, och båda markerar hela stunden på en
+   gång. Löftet om att återuppta exakt där man slutade håller inte.
+2. **`Cluster.swift:209` och `:314` kastar hela grupper** så fort en bild i dem
+   är favoritmarkerad. Att favoritmarkera bild 3 av 200 gömmer 197 osedda bilder
+   för alltid, utan väg tillbaka.
+
+Dessutom: ett tillgänglighetsstopp i `SlideToConfirm` (`ReviewView.swift:277`),
+som saknar allt en skärmläsare behöver; kontrasten faller under AA på ett tiotal
+ställen; texterna använder fasta punktstorlekar och växer inte med systemet;
+biblioteket klustras om på huvudtråden efter varje avslutad stund; och
+granskningsskärmen väntar på iCloud utan tak.
