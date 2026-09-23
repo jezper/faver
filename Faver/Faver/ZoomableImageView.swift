@@ -97,7 +97,8 @@ nonisolated enum PhotoImage {
     static func request(
         for asset: PHAsset,
         targetSize: CGSize,
-        allowsNetwork: Bool
+        allowsNetwork: Bool,
+        resize: PHImageRequestOptionsResizeMode = .fast
     ) async -> UIImage? {
         let manager = PHImageManager.default()
         nonisolated(unsafe) var requestID: PHImageRequestID?
@@ -107,7 +108,7 @@ nonisolated enum PhotoImage {
                 let options = PHImageRequestOptions()
                 options.isNetworkAccessAllowed = allowsNetwork
                 options.deliveryMode = allowsNetwork ? .highQualityFormat : .fastFormat
-                options.resizeMode = .fast
+                options.resizeMode = resize
                 nonisolated(unsafe) var done = false
                 requestID = manager.requestImage(
                     for: asset,

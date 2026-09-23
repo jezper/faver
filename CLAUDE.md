@@ -140,9 +140,16 @@ places (~1 km). Same location only geocoded once per launch.
 
 ### Image loading
 Two passes everywhere: a fast local one to get something on screen, then a sharper one.
-Home and browse thumbnails never allow network access at all. The review screen does
-allow it for the second pass only, after the local pass has already drawn something,
-and cancels in-flight requests when the user swipes on.
+The network is allowed on the **second** pass only, never the first — the rule is never
+to stall waiting for iCloud, not never to ask. The review screen also cancels in-flight
+requests when the user swipes on.
+
+**Always `resizeMode = .exact` on a pass whose output the user actually looks at.**
+`.fast` lets Photos answer with the nearest cached rendition instead of the size
+requested, which silently turns a high-resolution request into a thumbnail. `.fast`
+belongs only on a throwaway first pass.
+
+Ask for the size in **pixels**, not points: a 56pt row on a 3x screen needs 168.
 
 ### Visual
 Targets iOS 26.2. Review controls and map pins use `.glassEffect` with regular glass —

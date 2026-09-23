@@ -181,11 +181,13 @@ private struct ClusterRow: View {
         return await withCheckedContinuation { continuation in
             let opts = PHImageRequestOptions()
             opts.deliveryMode = .fastFormat
-            opts.resizeMode = .fast
+            opts.resizeMode = .exact
             opts.isNetworkAccessAllowed = false
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 112, height: 112),
+                // 56pt drawn on a 3x screen. It was asking for 112, which is the 2x
+                // number, so every row was upscaled by half again.
+                targetSize: CGSize(width: 168, height: 168),
                 contentMode: .aspectFill,
                 options: opts
             ) { img, _ in continuation.resume(returning: img) }

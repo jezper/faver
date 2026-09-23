@@ -33,10 +33,13 @@ struct VideoReviewView: View {
         }
         .ignoresSafeArea()
         .task(id: asset.localIdentifier) {
+            // Exact: the poster fills the screen and nothing replaces it later, so it
+            // cannot settle for whatever cached rendition happens to be nearest.
             poster = await PhotoImage.request(
                 for: asset,
                 targetSize: CGSize(width: 1600, height: 1600),
-                allowsNetwork: false
+                allowsNetwork: false,
+                resize: .exact
             )
         }
         // Leaving the page stops playback. Without this the sound of a video follows the

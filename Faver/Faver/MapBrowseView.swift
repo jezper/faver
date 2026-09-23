@@ -313,11 +313,12 @@ private struct MapClusterSheet: View {
         return await withCheckedContinuation { continuation in
             let opts = PHImageRequestOptions()
             opts.deliveryMode = .fastFormat
-            opts.resizeMode = .fast
+            opts.resizeMode = .exact
             opts.isNetworkAccessAllowed = false
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 144, height: 144),
+                // 72pt drawn on a 3x screen.
+                targetSize: CGSize(width: 216, height: 216),
                 contentMode: .aspectFill,
                 options: opts
             ) { img, _ in continuation.resume(returning: img) }

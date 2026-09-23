@@ -626,11 +626,12 @@ private struct MomentCard: View {
     private func loadThumbnails() async {
         let assets = Array(cluster.assetsToReview.prefix(3))
 
-        // Phase 1 — fast local previews: get something on screen immediately.
+        // Phase 1 — whatever is on the device, immediately. Speed is the only thing that
+        // matters here, so it stays approximate and never touches the network.
         var result: [Int: UIImage] = [:]
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (i, asset) in assets.enumerated() {
-                group.addTask { (i, await Self.thumbnail(for: asset, targetSize: CGSize(width: 400, height: 400))) }
+                group.addTask { (i, await Self.preview(for: asset)) }
             }
             for await (i, img) in group {
                 if let img {
@@ -640,12 +641,10 @@ private struct MomentCard: View {
             }
         }
 
-        // Phase 2 — high-res upgrade: replace each thumbnail as the sharp version arrives.
-        // Uses a larger target and highQualityFormat (still no network, so iCloud-only
-        // photos fall back gracefully to whatever is cached locally).
+        // Phase 2 — the sharp version, swapped in as each one arrives.
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (i, asset) in assets.enumerated() {
-                group.addTask { (i, await Self.thumbnail(for: asset, targetSize: CGSize(width: 1200, height: 1200))) }
+                group.addTask { (i, await Self.sharp(for: asset)) }
             }
             for await (i, img) in group {
                 guard let img else { continue }
@@ -655,21 +654,38 @@ private struct MomentCard: View {
         }
     }
 
-    private static func thumbnail(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+    private static func preview(for asset: PHAsset) async -> UIImage? {
+        let opts = PHImageRequestOptions()
+        opts.isNetworkAccessAllowed = false
+        opts.deliveryMode = .opportunistic
+        opts.resizeMode = .fast
+        return await request(asset, size: CGSize(width: 500, height: 500), options: opts)
+    }
+
+    private static func sharp(for asset: PHAsset) async -> UIImage? {
+        let opts = PHImageRequestOptions()
+        // Allowed here, and only here, because phase one has already drawn something. The
+        // rule is never to stall waiting for iCloud, not never to ask: a photo that lives
+        // only in iCloud used to be stuck at whatever small cached thumbnail existed, and
+        // stayed blurry on the home screen for good.
+        opts.isNetworkAccessAllowed = true
+        opts.deliveryMode = .highQualityFormat
+        // Exact, not fast. Fast lets Photos answer with the nearest cached rendition
+        // instead of the size asked for, which is why the "high resolution" pass kept
+        // handing back a small thumbnail.
+        opts.resizeMode = .exact
+        return await request(asset, size: CGSize(width: 1600, height: 1600), options: opts)
+    }
+
+    private static func request(_ asset: PHAsset, size: CGSize, options: PHImageRequestOptions) async -> UIImage? {
         await withCheckedContinuation { continuation in
-            let opts = PHImageRequestOptions()
-            opts.isNetworkAccessAllowed = false  // never stall waiting for iCloud
-            opts.resizeMode = .fast
-            // .opportunistic for the small pass (fast degraded preview then final),
-            // .highQualityFormat for the large pass (one call, best local quality).
-            opts.deliveryMode = targetSize.width <= 400 ? .opportunistic : .highQualityFormat
             nonisolated(unsafe) var done = false
             nonisolated(unsafe) var fallback: UIImage? = nil
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: targetSize,
+                targetSize: size,
                 contentMode: .aspectFill,
-                options: opts
+                options: options
             ) { img, info in
                 guard !done else { return }
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
