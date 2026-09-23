@@ -178,19 +178,11 @@ private struct ClusterRow: View {
 
     private func loadThumbnail() async -> UIImage? {
         guard let asset = (archived ? cluster.allAssets : cluster.assetsToReview).first else { return nil }
-        return await withCheckedContinuation { continuation in
-            let opts = PHImageRequestOptions()
-            opts.deliveryMode = .fastFormat
-            opts.resizeMode = .exact
-            opts.isNetworkAccessAllowed = false
-            PHImageManager.default().requestImage(
-                for: asset,
-                // 56pt drawn on a 3x screen. It was asking for 112, which is the 2x
-                // number, so every row was upscaled by half again.
-                targetSize: CGSize(width: 168, height: 168),
-                contentMode: .aspectFill,
-                options: opts
-            ) { img, _ in continuation.resume(returning: img) }
-        }
+        return await ThumbnailCache.shared.image(
+            for: asset,
+            size: ThumbnailCache.rowSize,
+            allowsNetwork: false,
+            exact: true
+        )
     }
 }

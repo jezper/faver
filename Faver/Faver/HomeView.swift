@@ -51,10 +51,17 @@ struct HomeView: View {
             content
         }
         .task {
+            // Starts before clustering finishes, on the photos shown last time. The
+            // library rarely changes between sessions, so this is usually the right guess
+            // and the first card is drawn before the home screen is.
+            ThumbnailCache.shared.warmFromLastLaunch()
             let status = library.authorizationStatus
             if status == .authorized || status == .limited {
                 library.load()
             }
+        }
+        .onChange(of: homeClusters.map(\.id)) { _, _ in
+            ThumbnailCache.shared.warm(homeClusters)
         }
         #if DEBUG
         .task(id: "iconExport") { AppIconExporter.exportIfNeeded() }
@@ -502,8 +509,16 @@ private struct MomentCard: View {
     let cluster: PhotoCluster
     let onTap: () -> Void
 
-    @State private var thumbnails: [UIImage] = []
+    @State private var thumbnails: [UIImage]
     @State private var locationName: String? = nil
+
+    init(cluster: PhotoCluster, onTap: @escaping () -> Void) {
+        self.cluster = cluster
+        self.onTap = onTap
+        // Already-fetched images are handed over here rather than in a task, so a card
+        // that has been on screen before comes back drawn instead of blank.
+        _thumbnails = State(initialValue: ThumbnailCache.shared.cachedCard(cluster))
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -625,13 +640,21 @@ private struct MomentCard: View {
 
     private func loadThumbnails() async {
         let assets = Array(cluster.assetsToReview.prefix(3))
+        guard thumbnails.count < assets.count else { return }   // already drawn from cache
 
         // Phase 1 — whatever is on the device, immediately. Speed is the only thing that
         // matters here, so it stays approximate and never touches the network.
         var result: [Int: UIImage] = [:]
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (i, asset) in assets.enumerated() {
-                group.addTask { (i, await Self.preview(for: asset)) }
+                group.addTask { @MainActor in
+                    (i, await ThumbnailCache.shared.image(
+                        for: asset,
+                        size: ThumbnailCache.previewSize,
+                        allowsNetwork: false,
+                        exact: false
+                    ))
+                }
             }
             for await (i, img) in group {
                 if let img {
@@ -641,57 +664,24 @@ private struct MomentCard: View {
             }
         }
 
-        // Phase 2 — the sharp version, swapped in as each one arrives.
+        // Phase 2 — the sharp version, swapped in as each one arrives. Usually already
+        // cached by the time a card is looked at, because the whole set was warmed as
+        // soon as the moments were known.
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for (i, asset) in assets.enumerated() {
-                group.addTask { (i, await Self.sharp(for: asset)) }
+                group.addTask { @MainActor in
+                    (i, await ThumbnailCache.shared.image(
+                        for: asset,
+                        size: ThumbnailCache.size(forIndex: i),
+                        allowsNetwork: true,
+                        exact: true
+                    ))
+                }
             }
             for await (i, img) in group {
                 guard let img else { continue }
                 result[i] = img
                 thumbnails = (0..<assets.count).compactMap { result[$0] }
-            }
-        }
-    }
-
-    private static func preview(for asset: PHAsset) async -> UIImage? {
-        let opts = PHImageRequestOptions()
-        opts.isNetworkAccessAllowed = false
-        opts.deliveryMode = .opportunistic
-        opts.resizeMode = .fast
-        return await request(asset, size: CGSize(width: 500, height: 500), options: opts)
-    }
-
-    private static func sharp(for asset: PHAsset) async -> UIImage? {
-        let opts = PHImageRequestOptions()
-        // Allowed here, and only here, because phase one has already drawn something. The
-        // rule is never to stall waiting for iCloud, not never to ask: a photo that lives
-        // only in iCloud used to be stuck at whatever small cached thumbnail existed, and
-        // stayed blurry on the home screen for good.
-        opts.isNetworkAccessAllowed = true
-        opts.deliveryMode = .highQualityFormat
-        // Exact, not fast. Fast lets Photos answer with the nearest cached rendition
-        // instead of the size asked for, which is why the "high resolution" pass kept
-        // handing back a small thumbnail.
-        opts.resizeMode = .exact
-        return await request(asset, size: CGSize(width: 1600, height: 1600), options: opts)
-    }
-
-    private static func request(_ asset: PHAsset, size: CGSize, options: PHImageRequestOptions) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            nonisolated(unsafe) var done = false
-            nonisolated(unsafe) var fallback: UIImage? = nil
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: size,
-                contentMode: .aspectFill,
-                options: options
-            ) { img, info in
-                guard !done else { return }
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if isDegraded { fallback = img; return }
-                done = true
-                continuation.resume(returning: img ?? fallback)
             }
         }
     }

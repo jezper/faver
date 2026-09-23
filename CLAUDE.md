@@ -151,6 +151,15 @@ belongs only on a throwaway first pass.
 
 Ask for the size in **pixels**, not points: a 56pt row on a 3x screen needs 168.
 
+`ThumbnailCache` (ThumbnailCache.swift) owns every card and row image. It caches decoded
+results by asset and exact size, shares one request between simultaneous askers, warms
+the five home cards as soon as the moments are known, and at launch re-fetches the photos
+shown last session while clustering is still running — the library rarely changes between
+sessions, so the first card is usually drawn before the home screen is. `MomentCard` takes
+its images from the cache in `init`, so a card that has been seen before comes back drawn
+rather than blank. The review screen and video posters go through `PhotoImage` instead;
+those are full-screen, one at a time, and should not be held on to.
+
 ### Visual
 Targets iOS 26.2. Review controls and map pins use `.glassEffect` with regular glass —
 not clear, which Apple suggests over photos but which cannot hold up over an arbitrary
