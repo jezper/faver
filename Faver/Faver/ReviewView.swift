@@ -17,6 +17,7 @@ struct ReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage: Int = 0
     @State private var favoritedIDs: Set<String> = []
+    @State private var failureNotice: String? = nil
 
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
@@ -59,6 +60,28 @@ struct ReviewView: View {
                 .ignoresSafeArea(edges: .bottom)
             }
 
+            if let failureNotice {
+                VStack {
+                    Spacer()
+                    Text(failureNotice)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: Capsule())
+                        .padding(.bottom, 150)
+                }
+                .transition(.opacity)
+                .allowsHitTesting(false)
+            }
+        }
+        .animation(.calm(reduceMotion: reduceMotion), value: failureNotice)
+        // Clears itself. A failed favourite is worth saying once, not worth a dialog
+        // the user has to dismiss before carrying on.
+        .task(id: failureNotice) {
+            guard failureNotice != nil else { return }
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { failureNotice = nil }
         }
         .statusBarHidden()
         .task {
@@ -240,12 +263,19 @@ struct ReviewView: View {
         guard let asset = currentAsset else { return }
         haptics.impactOccurred()
         let id = asset.localIdentifier
-        if favoritedIDs.contains(id) {
-            favoritedIDs.remove(id)
-            library.favorite(asset, on: false)
-        } else {
-            favoritedIDs.insert(id)
-            library.favorite(asset, on: true)
+        let turningOn = !favoritedIDs.contains(id)
+
+        // The heart moves first, because the toggle has to feel instant. The write is
+        // then checked, and put back if the photo library refused it.
+        if turningOn { favoritedIDs.insert(id) } else { favoritedIDs.remove(id) }
+
+        Task {
+            let saved = await library.favorite(asset, on: turningOn)
+            guard !saved else { return }
+            if turningOn { favoritedIDs.remove(id) } else { favoritedIDs.insert(id) }
+            failureNotice = turningOn
+                ? "Couldn't save that favourite."
+                : "Couldn't remove that favourite."
         }
     }
 

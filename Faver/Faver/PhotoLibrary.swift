@@ -86,6 +86,7 @@ final class LibraryService: ObservableObject {
         let gap = ClusterGap(rawValue: gapRaw) ?? .medium
         let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
+        let includeScreenshots = UserDefaults.standard.bool(forKey: "includeScreenshots")
 
         Task {
             // Fetching and clustering happen in one detached pass. Clustering used to
@@ -97,6 +98,16 @@ final class LibraryService: ObservableObject {
             let (total, built): (Int, [PhotoCluster]) = await Task.detached(priority: .userInitiated) {
                 let options = PHFetchOptions()
                 options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+                // Screenshots are the single biggest source of clutter in a camera roll
+                // and nobody wants to be asked whether a screenshot of a receipt is a
+                // favourite. Filtered in the fetch rather than afterwards, so they never
+                // reach clustering and never count towards progress either.
+                if !includeScreenshots {
+                    options.predicate = NSPredicate(
+                        format: "NOT ((mediaSubtypes & %d) != 0)",
+                        PHAssetMediaSubtype.photoScreenshot.rawValue
+                    )
+                }
                 let result = PHAsset.fetchAssets(with: options)
                 var assets: [PHAsset] = []
                 assets.reserveCapacity(result.count)
@@ -119,10 +130,23 @@ final class LibraryService: ObservableObject {
 
     // MARK: - Mutations
 
-    func favorite(_ asset: PHAsset, on: Bool) {
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest(for: asset).isFavorite = on
-        }, completionHandler: { _, _ in })
+    /// Reports whether the write actually landed. The result used to be discarded, so
+    /// the heart filled in whether or not the photo library accepted the change and the
+    /// user had no way to know a favourite had been lost.
+    func favorite(_ asset: PHAsset, on: Bool) async -> Bool {
+        await withCheckedContinuation { continuation in
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest(for: asset).isFavorite = on
+            }, completionHandler: { success, _ in
+                continuation.resume(returning: success)
+            })
+        }
+    }
+
+    /// Puts the queue back to full. See ReviewStore.reset().
+    func startOver() {
+        ReviewStore.shared.reset()
+        load()
     }
 
     func markSeen(_ asset: PHAsset) {
