@@ -24,6 +24,7 @@ struct MapBrowseView: View {
     let onSelect: (PhotoCluster) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var position: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 20, longitude: 10),
@@ -62,7 +63,11 @@ struct MapBrowseView: View {
                 .onMapCameraChange(frequency: .onEnd) { ctx in
                     currentRegion = ctx.region
                 }
-                .mapStyle(.hybrid(elevation: .realistic))
+                // Standard rather than realistic satellite. Satellite imagery is the
+                // busiest, most saturated surface there is, and the brief asks for calm
+                // and muted. On a plain map the amber pins become the only saturated
+                // thing on screen, which is where the eye should go.
+                .mapStyle(.standard)
                 .ignoresSafeArea(edges: .bottom)
 
                 if geoClusters.isEmpty {
@@ -71,7 +76,6 @@ struct MapBrowseView: View {
             }
             .navigationTitle("Places")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -85,11 +89,8 @@ struct MapBrowseView: View {
             if let cluster = pin.clusters.first {
                 MapClusterSheet(cluster: cluster) {
                     selectedPin = nil
+                    onSelect(cluster)
                     dismiss()
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 350_000_000)
-                        onSelect(cluster)
-                    }
                 }
             }
         }
@@ -109,11 +110,11 @@ struct MapBrowseView: View {
                 .font(.system(size: 44))
                 .foregroundStyle(.white.opacity(0.3))
             Text("No location data")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.7))
             Text("Your unreviewed moments don't\nhave location information.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
         }
         .padding(36)
@@ -123,7 +124,9 @@ struct MapBrowseView: View {
     // MARK: - Zoom
 
     private func zoomIn(to pin: MapSuperCluster) {
-        withAnimation(.easeInOut(duration: 0.4)) {
+        // A map that flies 4x closer is exactly the kind of movement reduced motion
+        // exists to stop. The zoom still happens, it just arrives instead of travelling.
+        withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeInOut(duration: 0.4)) {
             let newSpan = MKCoordinateSpan(
                 latitudeDelta: max(currentRegion.span.latitudeDelta / 4, 0.005),
                 longitudeDelta: max(currentRegion.span.longitudeDelta / 4, 0.005)
@@ -201,25 +204,40 @@ private struct PinView: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            if pin.isLeaf {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.accent)
-                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 2)
-            } else {
-                ZStack {
-                    Circle()
-                        .fill(Color.accent)
-                        .frame(width: 38, height: 38)
+        // Glass rather than a flat amber disc. A solid fill over map terrain has the
+        // same contrast problem the review screen had over photos, and nobody had
+        // solved it here. Amber becomes a tint the material carries, not the whole pin.
+        GlassEffectContainer(spacing: 8) {
+            Button(action: onTap) {
+                if pin.isLeaf {
+                    Image(systemName: "mappin")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                } else {
                     Text("\(pin.photoCount)")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .padding(.horizontal, 6)
                 }
-                .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
             }
+            .glassEffect(.regular.tint(Color.accent).interactive(), in: Capsule())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint(pin.isLeaf ? "Opens this moment" : "Zooms in to show the moments here")
+    }
+
+    /// The badge is a bare number, which could be read as either places or photos.
+    /// Screen readers get the sentence the glyph cannot carry.
+    private var accessibilityText: String {
+        if pin.isLeaf {
+            let c = pin.clusters[0]
+            return "\(c.title), \(c.dateLabel), \(c.count) photos left to review"
+        }
+        let moments = pin.clusters.count
+        return "\(pin.photoCount) photos in \(moments) moments here"
     }
 }
 
@@ -248,7 +266,7 @@ private struct MapClusterSheet: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(cluster.title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(.white)
                     HStack(spacing: 4) {
                         Text(cluster.dateLabel)
@@ -257,10 +275,10 @@ private struct MapClusterSheet: View {
                         }
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.6))
                     Text("\(cluster.count) photo\(cluster.count == 1 ? "" : "s") to review")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
                 Spacer()
             }
@@ -270,10 +288,10 @@ private struct MapClusterSheet: View {
                     Image(systemName: "heart.fill")
                     Text("Review this moment")
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
                 .background(Color.accent, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(PressScaleStyle())

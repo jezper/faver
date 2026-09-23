@@ -27,11 +27,21 @@ final class LibraryService: ObservableObject {
         minSize <= 1 ? clusters : clusters.filter { $0.totalInWindow >= minSize }
     }
 
+    /// Photos still to review, within whatever the minimum-size filter is showing.
     var toReviewCount: Int { filtered.reduce(0) { $0 + $1.count } }
 
+    /// Moments still to review. Not the same number as `toReviewCount`, which counts
+    /// photos — the two were being used interchangeably, and the home screen said
+    /// "12,438 moments" when it meant photos.
+    var momentCount: Int { filtered.count }
+
+    /// Progress through the whole library, deliberately ignoring the minimum-size
+    /// filter. Hiding small sets from view is not the same as having reviewed them,
+    /// and counting it as progress would quietly inflate the number.
     var reviewedFraction: Double {
         guard totalAssets > 0 else { return 0 }
-        return Double(totalAssets - toReviewCount) / Double(totalAssets)
+        let remaining = clusters.reduce(0) { $0 + $1.count }
+        return Double(totalAssets - remaining) / Double(totalAssets)
     }
 
     /// Top-5 clusters ranked by engagement potential (size × GPS × nostalgia).
@@ -78,26 +88,27 @@ final class LibraryService: ObservableObject {
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
 
         Task {
-            // Phase 1 — enumerate assets off the main thread (no property access).
-            let (total, allAssets): (Int, [PHAsset]) = await Task.detached(priority: .userInitiated) {
+            // Fetching and clustering happen in one detached pass. Clustering used to
+            // run back on the main actor, reading creationDate, isFavorite and location
+            // on every asset in the library, twice — on launch, on every settings
+            // change, and after every single moment reviewed. On a large library that
+            // is the price of finishing one moment, paid as a frozen screen, while the
+            // spinner meant to reassure the user could not even turn.
+            let (total, built): (Int, [PhotoCluster]) = await Task.detached(priority: .userInitiated) {
                 let options = PHFetchOptions()
                 options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
                 let result = PHAsset.fetchAssets(with: options)
                 var assets: [PHAsset] = []
                 assets.reserveCapacity(result.count)
                 result.enumerateObjects { asset, _, _ in assets.append(asset) }
-                return (result.count, assets)
-            }.value
 
-            // Phase 2 — clustering on @MainActor (PHAsset property access is @MainActor in iOS 26).
-            loadProgress = 0.88
-            let built: [PhotoCluster]
-            switch mode {
-            case .smart:
-                built = buildSmartClusters(from: allAssets, reviewedIDs: reviewedIDs, sensitivity: sensitivity)
-            case .fixed:
-                built = buildClusters(from: allAssets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold)
-            }
+                switch mode {
+                case .smart:
+                    return (result.count, buildSmartClusters(from: assets, reviewedIDs: reviewedIDs, sensitivity: sensitivity))
+                case .fixed:
+                    return (result.count, buildClusters(from: assets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold))
+                }
+            }.value
 
             totalAssets = total
             clusters = built

@@ -21,10 +21,39 @@ extension Color {
 
 struct PressScaleStyle: ButtonStyle {
     var scale: CGFloat = 0.95
+
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+        PressScale(configuration: configuration, scale: scale)
+    }
+
+    /// A ButtonStyle cannot read the environment directly, so the body lives in a real
+    /// view. Someone who has asked the system to reduce motion still gets the press
+    /// feedback, it just stops springing.
+    private struct PressScale: View {
+        let configuration: Configuration
+        let scale: CGFloat
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? scale : 1)
+                .animation(
+                    reduceMotion ? .linear(duration: 0.1)
+                                 : .spring(response: 0.25, dampingFraction: 0.7),
+                    value: configuration.isPressed
+                )
+        }
+    }
+}
+
+// MARK: - Motion
+
+extension Animation {
+    /// A spring that flattens to a plain fade when the system asks for reduced motion.
+    static func calm(reduceMotion: Bool, response: Double = 0.3, damping: Double = 0.7) -> Animation {
+        reduceMotion
+            ? .linear(duration: 0.15)
+            : .spring(response: response, dampingFraction: damping)
     }
 }
 

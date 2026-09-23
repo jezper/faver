@@ -18,9 +18,13 @@ without pressure.
 - Full screen, one photo or video at a time
 - Swipe left to advance, swipe right to go back — free movement within a cluster
 - Favorite button toggles instantly, no confirmation dialog, no auto-advance
-- Informal burst detection: photos taken within ~3 seconds grouped as a set
-- Within a burst set, swipe vertically; swipe horizontally to move between moments
+- Leaving is free and never confirmed: every photo is recorded as seen when it is
+  the one on screen, so the next visit resumes on the photo the user stopped at
 - Progress indicator shows overall library completion — should feel like momentum, not pressure
+
+**Not built yet.** Burst sets (photos within ~3 s grouped, swiped vertically) are in
+the design but nowhere in the code. Videos are fetched but shown as frozen stills with
+no play control and no indication they are videos.
 
 ## UX rules
 - No confirmation dialogs on the favorite toggle.
@@ -29,7 +33,6 @@ Other behaviour/quality/design/a11y rules: inherited from global ~/.claude/CLAUD
 
 ## QA focus areas
 When testing or looking for edge cases, prioritize:
-- Burst detection threshold edge cases
 - Cluster boundary logic
 - Session resume accuracy
 - Permission handling on first launch
@@ -52,49 +55,65 @@ xcodebuild -project Faver/Faver.xcodeproj -scheme Faver \
 
 There are no unit tests and no lint step.
 
+```bash
+# Ship to TestFlight (build number comes from Apple)
+./scripts/testflight.sh
+
+# Where the builds are
+./scripts/status.sh
+```
+
 ## Architecture
 ### Data flow
-`PhotoLibraryService` (`@MainActor ObservableObject`) is the single source of truth. It owns
-`clusters: [PhotoCluster]`, `totalCount`, and `isLoading`. Every view that reads library state
-takes it as `@ObservedObject var photoLibrary: PhotoLibraryService`.
+`LibraryService` (`@MainActor ObservableObject`) is the single source of truth. It owns
+`clusters: [PhotoCluster]`, `totalAssets`, `isLoading` and `minSize`. Views take it as
+`let library: LibraryService`, except `SettingsView`, which needs `@ObservedObject`.
 
-`loadAssets()` is the main entry point — runs off the main thread via `Task.detached`, posts
-results back with `await MainActor.run`. Reads `clusterMode` and `clusterGap` from UserDefaults.
+`load()` is the main entry point. Fetching and clustering both run in one
+`Task.detached`, so nothing touches PHAsset properties on the main actor. Reads
+`clusterMode`, `smartSensitivity`, `clusterGap` and `minSetSize` from UserDefaults before
+crossing the boundary.
 
-After a review session ends, `onDismiss: { photoLibrary.loadAssets() }` triggers a re-cluster
-so reviewed photos disappear.
+After a review session ends, `onDismiss: { library.load() }` re-clusters so reviewed
+photos disappear.
+
+`ReviewStore` persists the ids of photos already seen, in UserDefaults.
 
 ### Clustering (Cluster.swift)
-Two modes. Fixed calls `buildClusters(from:reviewedIDs:gapThreshold:)` directly.
-Smart (`buildSmartClusters`) does its own grouping pass with two boundary signals:
-- **Time gap alone**: 90th-percentile of inter-photo gaps ≥ 60 s (bursts excluded),
-  clamped 30 min – 48 h.
-- **Location change**: if both consecutive photos have GPS, time gap ≥ 5 min, and
-  distance > 1 km → new venue boundary even without a large time gap.
-  Photos without GPS fall back to time-only.
-- **Fixed**: hard `gapThreshold` from `ClusterGap` (1 h / 3 h / 8 h).
+Two modes. Fixed calls `buildClusters(from:reviewedIDs:gapThreshold:)` with a hard
+threshold from `ClusterGap` (1 h / 3 h / 8 h). Smart (`buildSmartClusters`) uses three
+tiers:
+- **Day gap**: ≥ 24 h always splits.
+- **Time gap**: 90th percentile of gaps ≥ 60 s (bursts excluded), clamped 30 min – 18 h.
+- **Location change**: both photos geotagged, paused past `SmartSensitivity.minPauseTime`
+  (2 / 3 / 8 min) and moved past `locationThreshold` (1.5 / 3 / 5 km) → new venue.
 
-`PhotoCluster` is a pure value type holding assets still needing review (`assetsToReview`)
-plus full window size (`totalInWindow`) for the progress bar.
+`makeCluster` decides whether a window is worth showing. A window is skipped only if it
+was curated before Faver ever saw it — it contains a favorite and none of its photos are
+in `reviewedIDs`. Favorites made inside Faver must never hide photos the user has not
+reached.
+
+`PhotoCluster` is `@unchecked Sendable` so clustering can run off the main actor.
 
 ### Map (MapBrowseView.swift)
-Dynamic grid clustering keeps annotation count ≤ ~64 at any zoom level. `displayClusters`
-divides the world into an 8×8 grid scaled to `currentSpan`. Pins are `MapSuperCluster` —
-leaf (1 cluster, shows detail sheet) or aggregate (multiple clusters, zooms in ×4).
+`gridCluster` divides the visible region into an 8×8 grid, keeping annotations at ~64 or
+fewer. Pins are `MapSuperCluster` — leaf (1 cluster, opens a detail sheet) or aggregate
+(several, zooms in ×4). Map style is `.standard`, not satellite.
 
 ### Geocoding cache (GeocodingCache.swift)
 `actor GeocodingCache` is a session-scoped singleton. Key = lat/lon rounded to 2 decimal
 places (~1 km). Same location only geocoded once per launch.
 
-### Thumbnail loading
-Up to 4 thumbnails loaded in parallel using `withTaskGroup`. `isNetworkAccessAllowed = false`
-ensures the app never stalls waiting for iCloud.
-
-### Review flow
-`ReviewView` uses `TabView` with `.tabViewStyle(.page(indexDisplayMode: .never))`. Each page
-is an `AssetImageView` with black fill to prevent adjacent photo bleed. `photoLibrary.markReviewed`
-called on `onAppear` and `onChange(of: currentIndex)`.
+### Image loading
+Two passes everywhere: a fast local one to get something on screen, then a sharper one.
+Home and browse thumbnails never allow network access at all. The review screen does
+allow it for the second pass only, after the local pass has already drawn something,
+and cancels in-flight requests when the user swipes on.
 
 ### Visual
-Targets iOS 26 — uses `.glassEffect(in: Circle()/Capsule())` on review buttons and map pins
-with no version guard. Navigation bars get glass automatically.
+Targets iOS 26.2. Review controls and map pins use `.glassEffect` with regular glass —
+not clear, which Apple suggests over photos but which cannot hold up over an arbitrary
+camera roll. Navigation bars are left alone so they get system glass; do not add
+`.toolbarBackground`.
+
+Dark mode only, on purpose: a dark surround is the right environment for judging images.
