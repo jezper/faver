@@ -26,4 +26,12 @@ class ReviewStore {
     func isReviewed(_ id: String) -> Bool {
         reviewedIDs.contains(id)
     }
+
+    /// Forgets everything the app has seen. Nothing in the photo library is touched —
+    /// favorites already made stay made. This only puts the queue back to full, which
+    /// is the one way out of a moment swiped through by accident.
+    func reset() {
+        reviewedIDs = []
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }

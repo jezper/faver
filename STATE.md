@@ -6,30 +6,22 @@
 
 ## Senast uppdaterad
 
-2026-09-23 — Två fel lagade, Liquid Glass på plats, tillgänglighet och snabbhet.
+2026-09-23 — Hela listan avbetad. Burst-set och videor finns nu på riktigt.
 
-**Nuvarande fokus:** inget pågående. Nästa naturliga steg står under Kvar att göra.
+**Nuvarande fokus:** iOS 27, som väntar på att Xcode 27 blir installerat. Kräver
+administratörslösenord: `sudo mas upgrade 497799835`.
 
-**Vad som gjordes.** Genomgången 2026-09-22 hittade två fel som bröt mot appens egna
-löften, och båda är lagade:
+**Klart sedan sist.** Videor spelas upp i stället för att visas som en frusen ruta.
+Burst-set byggda: bilder tagna inom tre sekunder håller en position och sveps lodrätt.
+Skärmdumpar ligger inte längre i kön. Misslyckade favoritmarkeringar rapporteras i
+stället för att låtsas ha gått igenom. "Börja om" i Inställningar är den första
+ångermöjligheten som funnits. Appen märker nya bilder när den kommer tillbaka i
+förgrunden. Begränsad fotoåtkomst syns och går att vidga. Startsidan lägger ut sig
+själv i stället för att räkna 254 punkter för hand.
 
-1. Framstegen sparades bara när man nådde slutsidan, så ett avbrutet pass gav noll.
-   Varje bild bokförs nu när den är den som visas, vilket gör att man landar exakt
-   på bilden man slutade vid. Det gjorde också bekräftelserutan vid avslut onödig,
-   och den är borta tillsammans med dragreglaget som skärmläsare inte kunde använda.
-2. Att favoritmarkera en bild gömde hela stunden, inklusive osedda bilder. En stund
-   hoppas nu bara över om den var städad innan Faver någonsin såg den.
-
-**Liquid Glass finns nu på riktigt.** Appen låg på `.ultraThinMaterial` trots att
-dokumentationen påstod annat. Granskningsskärmen, kartnålarna och navigeringsraderna
-använder systemets glas. Kartan är vanlig karta i stället för satellit.
-
-**Tillgänglighet:** skalbara textstorlekar, kontrast över AA, skärmläsaretiketter på
-allt man trycker på, respekt för reducerad rörelse, 44 punkters träffytor.
-
-**Snabbhet:** klustringen är av huvudtråden, granskningsskärmen väntar aldrig på
-iCloud, startsidans kort laddas först när de syns, och de hårdkodade 350 ms av
-död tid efter en tryckning är borta.
+**Dessförinnan:** två fel som bröt mot appens löften (framsteg sparades aldrig under
+ett pass, favoritmarkering gömde osedda bilder), Liquid Glass på riktigt, tillgänglighet
+upp till AA, och klustringen bort från huvudtråden.
 
 ---
 
@@ -79,30 +71,19 @@ dialogruta tillbaka.
 
 ## Kvar att göra
 
-- **Ångra finns inte.** `ReviewStore` kan inte avmarkera, och Inställningar har ingen
-  nollställning. En felaktig markering går inte tillbaka.
-- **Misslyckade favoriter syns inte.** `LibraryService.favorite` struntar i resultatet,
-  så hjärtat fylls även om skrivningen inte gick igenom.
-- **Appen blir gammal medan den ligger öppen.** Ingen `PHPhotoLibraryChangeObserver` och
-  ingen `scenePhase`-hantering, så nya bilder syns först efter omstart.
-- **Begränsad fotoåtkomst behandlas som full.** Inget sätt att välja fler bilder, och
-  löftet om ett komplett varv gäller i tysthet bara en handfull bilder.
-- **Videor visas som frusna stillbilder** utan spelknapp. Man kan inte bedöma en video
-  på en bildruta.
-- **Skärmdumpar och kvitton ligger i kön.** Ingen filtrering på mediatyp.
-- **Burst-set finns inte** trots att de står i designen.
-- **Startsidans layout räknar punkter för hand** (254 pt reserverat) i stället för att
-  låta stacken göra jobbet. Går sönder vid stora textstorlekar.
-- **Liggande läge är påslaget men inte designat för.**
-
----
+- **iOS 27.** Lagerbyggd appikon i Icon Composer, `toolbarMinimizeBehavior` på
+  bläddringsvyn, och migrering från `ObservableObject` till `@Observable`. Allt väntar
+  på Xcode 27.
+- **`AppIconExporter`** i `AppIconView.swift` är död kod som pekar på en katalog som
+  inte finns. Tas bort när ikonen görs om.
+- **`GeocodingCache` använder `placemark`**, som är utfasad i iOS 26.
+- **Ingen ångra per bild.** "Börja om" nollställer allt; det finns inget sätt att ta
+  tillbaka en enskild bild eller en enskild stund.
 
 ## Att veta
 
-- Appen kräver iOS 26.2 eller senare.
-- Xcode 27 kräver macOS 26.6. Neo står på 26.5. Omstarten är **uppskjuten** tills Jezper
-  har tid att sitta bredvid. Nästan inget designarbete väntade på den: Liquid Glass fanns
-  redan i iOS 26. Det som faktiskt kräver iOS 27 är den lagerbyggda appikonen
-  (Icon Composer) och `toolbarMinimizeBehavior`.
-- `AppIconExporter` i `AppIconView.swift` är död kod som pekar på en katalog som inte
-  finns. Tas bort när ikonen görs om i Icon Composer.
+- Appen kräver iOS 26.2 eller senare. Beslut 2026-09-22, oförändrat.
+- Neo står på macOS 27. Xcode är kvar på 26.6 tills `sudo mas upgrade 497799835` körts
+  av en människa; `mas` kan inte mata in administratörslösenordet.
+- Projektet använder synkroniserade grupper (objectVersion 77), så nya .swift-filer
+  plockas upp automatiskt. Ingen redigering av projektfilen behövs.

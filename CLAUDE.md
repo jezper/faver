@@ -17,14 +17,14 @@ without pressure.
 ## Interaction model
 - Full screen, one photo or video at a time
 - Swipe left to advance, swipe right to go back — free movement within a cluster
+- Burst sets: photos within ~3 s (or sharing a camera burst id) hold one horizontal
+  position and are swiped vertically. Seeing a burst marks all of it.
+- Videos show a poster frame, their length and a play control. Never autoplay.
 - Favorite button toggles instantly, no confirmation dialog, no auto-advance
 - Leaving is free and never confirmed: every photo is recorded as seen when it is
   the one on screen, so the next visit resumes on the photo the user stopped at
 - Progress indicator shows overall library completion — should feel like momentum, not pressure
-
-**Not built yet.** Burst sets (photos within ~3 s grouped, swiped vertically) are in
-the design but nowhere in the code. Videos are fetched but shown as frozen stills with
-no play control and no indication they are videos.
+- Screenshots are excluded by default, with a setting to include them
 
 ## UX rules
 - No confirmation dialogs on the favorite toggle.
@@ -77,7 +77,13 @@ crossing the boundary.
 After a review session ends, `onDismiss: { library.load() }` re-clusters so reviewed
 photos disappear.
 
-`ReviewStore` persists the ids of photos already seen, in UserDefaults.
+`ReviewStore` persists the ids of photos already seen, in UserDefaults. `reset()`
+backs the Start over action in Settings; it clears progress only and never touches
+the photo library.
+
+`LibraryService` observes the photo library, but only sets a flag. The reload happens
+when the app returns to the foreground, because Faver's own favorite writes are library
+changes too and reloading on each would re-cluster everything on every heart tap.
 
 ### Clustering (Cluster.swift)
 Two modes. Fixed calls `buildClusters(from:reviewedIDs:gapThreshold:)` with a hard
@@ -93,7 +99,12 @@ was curated before Faver ever saw it — it contains a favorite and none of its 
 in `reviewedIDs`. Favorites made inside Faver must never hide photos the user has not
 reached.
 
-`PhotoCluster` is `@unchecked Sendable` so clustering can run off the main actor.
+`groupIntoUnits` folds each cluster's photos into `ReviewUnit`s — one photo, or a burst.
+Computed once when the cluster is built, stored on `PhotoCluster.units`, and used as the
+review pager's positions. `assetsToReview` stays flat and is what counts are taken from.
+
+`PhotoCluster` and `ReviewUnit` are `@unchecked Sendable` so clustering can run off the
+main actor.
 
 ### Map (MapBrowseView.swift)
 `gridCluster` divides the visible region into an 8×8 grid, keeping annotations at ~64 or

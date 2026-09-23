@@ -38,7 +38,7 @@ struct ZoomableImageView: View {
             // this pass exists to put something up instantly; the full-size original
             // replaces it a moment later anyway. 1600 is past a phone's long edge at 2x
             // and decodes quickly.
-            let local = await Self.requestImage(
+            let local = await PhotoImage.request(
                 for: asset,
                 targetSize: CGSize(width: 1600, height: 1600),
                 allowsNetwork: false
@@ -53,7 +53,7 @@ struct ZoomableImageView: View {
                 onlyInCloud = true
             }
 
-            let full = await Self.requestImage(
+            let full = await PhotoImage.request(
                 for: asset,
                 targetSize: PHImageManagerMaximumSize,
                 allowsNetwork: true
@@ -85,9 +85,16 @@ struct ZoomableImageView: View {
         }
     }
 
+}
+
+// MARK: - Shared image request
+
+/// One place for "give me this asset as a UIImage". Both the still viewer and the video
+/// poster need it, and getting cancellation right matters enough not to write twice.
+nonisolated enum PhotoImage {
     /// Cancelling the request matters as much as making it: swiping through a set
     /// leaves a trail of full-size decodes running for photos already off screen.
-    private static func requestImage(
+    static func request(
         for asset: PHAsset,
         targetSize: CGSize,
         allowsNetwork: Bool

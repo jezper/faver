@@ -1,9 +1,10 @@
 import Combine
 import Photos
+import PhotosUI
 import SwiftUI
 
 @MainActor
-final class LibraryService: ObservableObject {
+final class LibraryService: NSObject, ObservableObject {
 
     @Published var authorizationStatus: PHAuthorizationStatus =
         PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -14,11 +15,23 @@ final class LibraryService: ObservableObject {
     /// Minimum total-photo count a cluster must have to appear in the UI.
     @Published var minSize: Int = max(1, UserDefaults.standard.integer(forKey: "minSetSize"))
 
-    init() {
+    /// Set when the photo library changed under us. Acted on when the app comes back to
+    /// the foreground rather than immediately, because Faver's own favorite writes are
+    /// changes too — reloading on every one would re-cluster the whole library on every
+    /// heart tap.
+    private var needsReload = false
+
+    override init() {
+        super.init()
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .authorized || status == .limited {
             isLoading = true
+            PHPhotoLibrary.shared().register(self)
         }
+    }
+
+    deinit {
+        PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
 
     // MARK: - Derived state
@@ -66,10 +79,32 @@ final class LibraryService: ObservableObject {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         authorizationStatus = status
         if status == .authorized || status == .limited {
+            PHPhotoLibrary.shared().register(self)
             load()
         } else {
             isLoading = false
         }
+    }
+
+    /// True when Faver can only see a hand-picked subset. The promise of a complete pass
+    /// over the library quietly means something much smaller here, so the app has to say
+    /// so and offer a way to widen it.
+    var hasLimitedAccess: Bool { authorizationStatus == .limited }
+
+    func presentLimitedPicker() {
+        guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+              let root = scene.keyWindow?.rootViewController else { return }
+        PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: root)
+    }
+
+    /// Called when the app comes back to the foreground. Photos taken since it was last
+    /// opened, and favorites set in the Photos app, used to need a kill and relaunch.
+    func reloadIfNeeded() {
+        guard needsReload, !isLoading else { return }
+        needsReload = false
+        load()
     }
 
     // MARK: - Load
@@ -86,6 +121,7 @@ final class LibraryService: ObservableObject {
         let gap = ClusterGap(rawValue: gapRaw) ?? .medium
         let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
+        let includeScreenshots = UserDefaults.standard.bool(forKey: "includeScreenshots")
 
         Task {
             // Fetching and clustering happen in one detached pass. Clustering used to
@@ -97,6 +133,16 @@ final class LibraryService: ObservableObject {
             let (total, built): (Int, [PhotoCluster]) = await Task.detached(priority: .userInitiated) {
                 let options = PHFetchOptions()
                 options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+                // Screenshots are the single biggest source of clutter in a camera roll
+                // and nobody wants to be asked whether a screenshot of a receipt is a
+                // favourite. Filtered in the fetch rather than afterwards, so they never
+                // reach clustering and never count towards progress either.
+                if !includeScreenshots {
+                    options.predicate = NSPredicate(
+                        format: "NOT ((mediaSubtypes & %d) != 0)",
+                        PHAssetMediaSubtype.photoScreenshot.rawValue
+                    )
+                }
                 let result = PHAsset.fetchAssets(with: options)
                 var assets: [PHAsset] = []
                 assets.reserveCapacity(result.count)
@@ -119,10 +165,23 @@ final class LibraryService: ObservableObject {
 
     // MARK: - Mutations
 
-    func favorite(_ asset: PHAsset, on: Bool) {
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest(for: asset).isFavorite = on
-        }, completionHandler: { _, _ in })
+    /// Reports whether the write actually landed. The result used to be discarded, so
+    /// the heart filled in whether or not the photo library accepted the change and the
+    /// user had no way to know a favourite had been lost.
+    func favorite(_ asset: PHAsset, on: Bool) async -> Bool {
+        await withCheckedContinuation { continuation in
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest(for: asset).isFavorite = on
+            }, completionHandler: { success, _ in
+                continuation.resume(returning: success)
+            })
+        }
+    }
+
+    /// Puts the queue back to full. See ReviewStore.reset().
+    func startOver() {
+        ReviewStore.shared.reset()
+        load()
     }
 
     func markSeen(_ asset: PHAsset) {
@@ -140,5 +199,15 @@ final class LibraryService: ObservableObject {
             if days < 14 { s *= 2.0 } else if days < 30 { s *= 1.5 }
         }
         return s
+    }
+}
+
+// MARK: - Photo library changes
+
+extension LibraryService: PHPhotoLibraryChangeObserver {
+    nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
+        Task { @MainActor in
+            needsReload = true
+        }
     }
 }

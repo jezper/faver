@@ -4,11 +4,13 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var library: LibraryService
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmStartOver = false
 
     @AppStorage("clusterMode")      private var clusterModeRaw: String = ClusterMode.smart.rawValue
     @AppStorage("smartSensitivity") private var sensitivityRaw: String = SmartSensitivity.balanced.rawValue
     @AppStorage("clusterGap")       private var clusterGapRaw:  String = ClusterGap.medium.rawValue
     @AppStorage("minSetSize")       private var minSetSize:      Int    = 1
+    @AppStorage("includeScreenshots") private var includeScreenshots: Bool = false
 
     private var mode:        ClusterMode      { ClusterMode(rawValue: clusterModeRaw)           ?? .smart    }
     private var sensitivity: SmartSensitivity { SmartSensitivity(rawValue: sensitivityRaw)      ?? .balanced }
@@ -46,6 +48,24 @@ struct SettingsView: View {
                     }
                 }
 
+                if library.hasLimitedAccess {
+                    Section {
+                        Button("Choose photos") { library.presentLimitedPicker() }
+                    } header: {
+                        Text("Photo access")
+                    } footer: {
+                        Text("Faver can only see the photos you picked. Everything else in your library stays invisible to it.")
+                    }
+                }
+
+                Section("What to include") {
+                    Toggle("Screenshots", isOn: $includeScreenshots)
+                    Text(includeScreenshots
+                         ? "Screenshots appear alongside your photos."
+                         : "Screenshots stay out of the way. Nothing is deleted — they are simply not asked about.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Minimum set size") {
                     Picker("Minimum size", selection: $minSetSize) {
                         ForEach(MinSetSize.allCases, id: \.rawValue) { s in
@@ -57,6 +77,25 @@ struct SettingsView: View {
                     Text(current.description)
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Section {
+                    Button("Start over", role: .destructive) { confirmStartOver = true }
+                } header: {
+                    Text("Progress")
+                } footer: {
+                    Text("Puts every moment back in the queue. Your favourites are not touched, and no photo is ever deleted.")
+                }
+            }
+            .confirmationDialog(
+                "Put every moment back in the queue?",
+                isPresented: $confirmStartOver,
+                titleVisibility: .visible
+            ) {
+                Button("Start over", role: .destructive) {
+                    library.startOver()
+                    dismiss()
+                }
+            } message: {
+                Text("Faver forgets what it has shown you. Favourites stay exactly as they are.")
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)

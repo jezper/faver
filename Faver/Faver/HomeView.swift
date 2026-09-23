@@ -18,6 +18,7 @@ struct HomeView: View {
     @AppStorage("minSetSize")   private var minSetSize: Int = 1
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     // The wordmark is display type, not body copy, so it keeps its drawn size rather
     // than dropping to a text style. ScaledMetric still grows it with the system
@@ -55,6 +56,9 @@ struct HomeView: View {
         #if DEBUG
         .task(id: "iconExport") { AppIconExporter.exportIfNeeded() }
         #endif
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { library.reloadIfNeeded() }
+        }
         .onChange(of: library.clusters.count) {
             if currentIndex >= homeClusters.count {
                 scrollIndex = max(0, homeClusters.count - 1)
@@ -93,10 +97,7 @@ struct HomeView: View {
         case .loading:      loadingView
         case .allDone:      allDoneView
         case .filterHiding: filterHidingView
-        case .ready:
-            GeometryReader { geo in
-                mainView(geo: geo)
-            }
+        case .ready:     mainView
         }
     }
 
@@ -120,28 +121,38 @@ struct HomeView: View {
 
     // MARK: - Main layout
 
-    private func mainView(geo: GeometryProxy) -> some View {
-        // Give the card everything except the fixed chrome above and below it.
-        // Header ≈ 50pt + sort row ≈ 36pt + bottom section ≈ 124pt + paddings ≈ 44pt
-        let reservedVertical: CGFloat = 254 + max(geo.safeAreaInsets.bottom, 24)
-        let cardHeight = max(280, geo.size.height - reservedVertical)
-        return VStack(spacing: 0) {
+    /// No GeometryReader and no arithmetic. This used to reserve a hardcoded 254 points
+    /// for chrome, tallied in a comment as "header ≈ 50 + sort ≈ 36 + bottom ≈ 124 +
+    /// paddings ≈ 44". Every one of those numbers was wrong the moment someone raised
+    /// their text size, and wrong again in landscape, where the whole screen is barely
+    /// taller than the guess. The rows size themselves and the card takes what is left.
+    private var mainView: some View {
+        VStack(spacing: 0) {
             header
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 10)
 
+            if library.hasLimitedAccess {
+                limitedAccessRow
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+            }
+
             sortRow
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
 
-            carousel(cardHeight: cardHeight)
+            carousel
+                .frame(maxHeight: .infinity)
+                .layoutPriority(1)
 
             bottomStack
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
-                .padding(.bottom, max(geo.safeAreaInsets.bottom, 24))
+                .padding(.bottom, 12)
         }
+        .safeAreaPadding(.bottom)
     }
 
     // MARK: - Header
@@ -179,6 +190,30 @@ struct HomeView: View {
         .accessibilityLabel("\(pct) percent through your library")
     }
 
+    /// Faver treated limited access exactly like full access, so the promise of a
+    /// complete pass over the library silently applied to a handful of photos.
+    private var limitedAccessRow: some View {
+        Button { library.presentLimitedPicker() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "photo.badge.checkmark")
+                    .font(.subheadline.weight(.semibold))
+                Text("Faver can only see the photos you picked")
+                    .font(.caption)
+                    .multilineTextAlignment(.leading)
+                Spacer()
+                Text("Choose")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(Color.accent)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(PressScaleStyle(scale: 0.98))
+        .accessibilityLabel("Faver can only see the photos you picked. Choose more photos.")
+    }
+
     // MARK: - Sort row
 
     private var sortRow: some View {
@@ -204,7 +239,7 @@ struct HomeView: View {
     /// front, so all five cards each loaded three thumbnails twice — thirty image
     /// decodes on open, for four cards the user usually never swipes to. LazyHStack
     /// builds them as they come into view.
-    private func carousel(cardHeight: CGFloat) -> some View {
+    private var carousel: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(Array(homeClusters.enumerated()), id: \.element.id) { i, cluster in
@@ -213,7 +248,6 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 20)
                     .containerRelativeFrame(.horizontal)
-                    .frame(height: cardHeight)
                     .id(i)
                 }
             }
@@ -222,7 +256,6 @@ struct HomeView: View {
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
         .scrollPosition(id: $scrollIndex)
-        .frame(height: cardHeight)
         .id(sortRaw) // recreate when sort changes so index resets cleanly
     }
 
