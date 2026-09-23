@@ -62,9 +62,7 @@ final class LibraryService: NSObject, ObservableObject {
     /// filter. Hiding small sets from view is not the same as having reviewed them,
     /// and counting it as progress would quietly inflate the number.
     var reviewedFraction: Double {
-        guard totalAssets > 0 else { return 0 }
-        let remaining = pending.reduce(0) { $0 + $1.count }
-        return Double(totalAssets - remaining) / Double(totalAssets)
+        progressFraction(total: totalAssets, remaining: pending.reduce(0) { $0 + $1.count })
     }
 
     /// Top-5 clusters ranked by engagement potential (size × GPS × nostalgia).

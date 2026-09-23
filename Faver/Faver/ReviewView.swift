@@ -214,6 +214,7 @@ struct ReviewView: View {
                 }
                 .glassEffect(.regular.interactive(), in: Capsule())
                 .accessibilityLabel("Done reviewing")
+                .accessibilityIdentifier("done")
 
                 Spacer()
 
@@ -271,6 +272,7 @@ struct ReviewView: View {
                 in: Circle()
             )
             .accessibilityLabel(isCurrentFavorited ? "Remove from favorites" : "Add to favorites")
+            .accessibilityIdentifier("favorite")
             .padding(.bottom, 44)
         }
         .frame(maxWidth: .infinity)
@@ -338,6 +340,7 @@ struct ReviewView: View {
                             .background(Color.accent, in: RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(PressScaleStyle())
+                    .accessibilityIdentifier("finish-moment")
 
                     Button {
                         if revisiting { library.reviewAgain(cluster) }

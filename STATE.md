@@ -6,22 +6,30 @@
 
 ## Senast uppdaterad
 
-2026-09-23 — Hela listan avbetad. Burst-set och videor finns nu på riktigt.
+2026-09-23 — Tester finns nu. Fem rättningar väntar oskickade.
 
-**Nuvarande fokus:** iOS 27, som väntar på att Xcode 27 blir installerat. Kräver
-administratörslösenord: `sudo mas upgrade 497799835`.
+**Nuvarande fokus:** oskickade rättningar, se nedan. Inget nytt byggs förrän de är ute.
 
-**Klart sedan sist.** Videor spelas upp i stället för att visas som en frusen ruta.
-Burst-set byggda: bilder tagna inom tre sekunder håller en position och sveps lodrätt.
-Skärmdumpar ligger inte längre i kön. Misslyckade favoritmarkeringar rapporteras i
-stället för att låtsas ha gått igenom. "Börja om" i Inställningar är den första
-ångermöjligheten som funnits. Appen märker nya bilder när den kommer tillbaka i
-förgrunden. Begränsad fotoåtkomst syns och går att vidga. Startsidan lägger ut sig
-själv i stället för att räkna 254 punkter för hand.
+**Tester.** `./scripts/test.sh` kör 46 snabba tester på sekunder och körs automatiskt
+före varje TestFlight-bygge, som vägrar gå vidare om de faller. De täcker reglerna för
+gruppering, burst-set, vilka stunder som ska visas, och genomgångsstatus — alltså precis
+de ställen där misstag kostat riktigt arbete.
 
-**Dessförinnan:** två fel som bröt mot appens löften (framsteg sparades aldrig under
-ett pass, favoritmarkering gömde osedda bilder), Liquid Glass på riktigt, tillgänglighet
-upp till AA, och klustringen bort från huvudtråden.
+`./scripts/uitest.sh` kör gränssnittstesterna mot ett riktigt fotobibliotek i
+simulatorn. **De passerar inte ännu**, och testerna är inte orsaken: simulatorn vägrar
+ge appen fotobehörighet, så den fastnar på välkomstskärmen. Se filhuvudet i
+`FaverUITests/ReviewFlowUITests.swift`.
+
+**Oskickat, klart och byggt lokalt:**
+
+1. Pinch-zoomen skrev om positionen vid varje steg och tog ankaret från fingrarna.
+2. Den skarpa bilden nollställde scrollvyn mitt i ett svep.
+3. `PHImageManagerMaximumSize` packades upp på huvudtråden vid bytet.
+4. Kort identifierades med sin plats i raden, så en avklarad stunds bilder ärvdes av
+   nästa. Det var buggen där en genomgången stund såg ut att ligga kvar.
+5. Videor spelades utan ljud, eftersom appen saknade egen ljudsession.
+
+Plus förhämtning av kommande bilder i granskningsvyn.
 
 ---
 
@@ -71,14 +79,15 @@ dialogruta tillbaka.
 
 ## Kvar att göra
 
-- **iOS 27.** Lagerbyggd appikon i Icon Composer, `toolbarMinimizeBehavior` på
-  bläddringsvyn, och migrering från `ObservableObject` till `@Observable`. Allt väntar
-  på Xcode 27.
+- **Gränssnittstesterna går inte att köra grönt.** Simulatorns fotobehörighet biter inte.
+  Troligen rätt väg: ge appen ett testläge med ett påhittat bibliotek i stället för att
+  slåss med simulatorn, vilket också gör dem snabba.
+- **iOS 27.** Lagerbyggd appikon i Icon Composer, `toolbarMinimizeBehavior`, och
+  migrering till `@Observable`. Väntar på att Xcode 27 installeras, vilket kräver
+  `sudo mas upgrade 497799835` körd av en människa i en riktig terminal.
 - **`AppIconExporter`** i `AppIconView.swift` är död kod som pekar på en katalog som
-  inte finns. Tas bort när ikonen görs om.
-- **`GeocodingCache` använder `placemark`**, som är utfasad i iOS 26.
-- **Ingen ångra per bild.** "Börja om" nollställer allt; det finns inget sätt att ta
-  tillbaka en enskild bild eller en enskild stund.
+  inte finns.
+- **`GeocodingCache` använder `placemark`**, utfasat i iOS 26.
 
 ## Att veta
 

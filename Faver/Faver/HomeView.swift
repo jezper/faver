@@ -5,8 +5,10 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var library = LibraryService()
-    // Optional because .scrollPosition binds to one. Nil means "between pages".
-    @State private var scrollIndex: Int? = 0
+    /// The moment showing in the carousel, by id. Not by index: identifying a card by
+    /// its place means the card that slides into a finished moment's place inherits its
+    /// state, and goes on showing the photos of a moment that is no longer there.
+    @State private var scrollID: String? = nil
     @State private var reviewCluster: PhotoCluster? = nil
     /// True when the moment being opened came from the archive, so every photo shows.
     @State private var reviewRevisiting = false
@@ -29,7 +31,10 @@ struct HomeView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var onboardingWordmark: CGFloat = 56
     @ScaledMetric(relativeTo: .largeTitle) private var loadingWordmark: CGFloat = 48
 
-    private var currentIndex: Int { scrollIndex ?? 0 }
+    private var currentIndex: Int {
+        guard let scrollID, let i = homeClusters.firstIndex(where: { $0.id == scrollID }) else { return 0 }
+        return i
+    }
 
     private enum HomeCardSort: String { case oldest, latest }
     private var cardSort: HomeCardSort { HomeCardSort(rawValue: sortRaw) ?? .oldest }
@@ -60,19 +65,16 @@ struct HomeView: View {
                 library.load()
             }
         }
-        .onChange(of: homeClusters.map(\.id)) { _, _ in
+        .onChange(of: homeClusters.map(\.id)) { _, ids in
             ThumbnailCache.shared.warm(homeClusters)
+            // The moment that was showing may have just been finished.
+            if let scrollID, !ids.contains(scrollID) { self.scrollID = ids.first }
         }
         #if DEBUG
         .task(id: "iconExport") { AppIconExporter.exportIfNeeded() }
         #endif
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { library.reloadIfNeeded() }
-        }
-        .onChange(of: library.clusters.count) {
-            if currentIndex >= homeClusters.count {
-                scrollIndex = max(0, homeClusters.count - 1)
-            }
         }
         // No reload here. Finishing a moment updates that one moment in place, and
         // leaving without finishing changed nothing at all, so the home screen no longer
@@ -210,6 +212,7 @@ struct HomeView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(pct) percent through your library")
+        .accessibilityIdentifier("progress")
     }
 
     /// Faver treated limited access exactly like full access, so the promise of a
@@ -240,7 +243,7 @@ struct HomeView: View {
 
     private var sortRow: some View {
         Button {
-            scrollIndex = 0
+            scrollID = nil
             sortRaw = cardSort == .oldest ? HomeCardSort.latest.rawValue : HomeCardSort.oldest.rawValue
         } label: {
             HStack(spacing: 5) {
@@ -264,21 +267,21 @@ struct HomeView: View {
     private var carousel: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(Array(homeClusters.enumerated()), id: \.element.id) { i, cluster in
+                ForEach(homeClusters) { cluster in
                     MomentCard(cluster: cluster) {
                         reviewRevisiting = false
                         reviewCluster = cluster
                     }
                     .padding(.horizontal, 20)
                     .containerRelativeFrame(.horizontal)
-                    .id(i)
+                    .id(cluster.id)
                 }
             }
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
-        .scrollPosition(id: $scrollIndex)
+        .scrollPosition(id: $scrollID)
         .id(sortRaw) // recreate when sort changes so index resets cleanly
     }
 
@@ -349,6 +352,7 @@ struct HomeView: View {
             }
             .buttonStyle(PressScaleStyle())
             .accessibilityLabel("Browse all, \(moments) moment\(moments == 1 ? "" : "s"), \(photos) photos")
+            .accessibilityIdentifier("browse-all")
         }
     }
 
@@ -585,7 +589,12 @@ private struct MomentCard: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityHint("Opens this moment for review")
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("moment-card")
         .task(id: cluster.id) {
+            // Re-seeded for this moment before anything is judged already loaded. A card
+            // reused for a different moment arrives holding the previous one's images.
+            thumbnails = ThumbnailCache.shared.cachedCard(cluster)
+            locationName = nil
             await loadThumbnails()
             locationName = await GeocodingCache.shared.lookup(cluster.firstLocationAsset?.location)
         }

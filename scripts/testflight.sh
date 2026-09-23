@@ -46,6 +46,9 @@ OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
 echo
+log "kör de snabba testerna"
+scripts/test.sh || die "testerna"
+
 log "låser upp nyckelknippan"
 security unlock-keychain -p "$(cat "$PASS_FILE")" "$KC" || die "nyckelknippan"
 

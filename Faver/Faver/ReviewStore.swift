@@ -31,10 +31,14 @@ class ReviewStore {
     /// library curated by hand years ago apart from one being curated in Faver now.
     private(set) var visitedIDs: Set<String>
 
-    private init() {
-        reviewedIDs = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-        stoppedAtIDs = Set(UserDefaults.standard.stringArray(forKey: stopsKey) ?? [])
-        visitedIDs = Set(UserDefaults.standard.stringArray(forKey: visitedKey) ?? [])
+    private let defaults: UserDefaults
+
+    /// Takes its storage so a test can hand it a scratch suite instead of the real one.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        reviewedIDs = Set(defaults.stringArray(forKey: key) ?? [])
+        stoppedAtIDs = Set(defaults.stringArray(forKey: stopsKey) ?? [])
+        visitedIDs = Set(defaults.stringArray(forKey: visitedKey) ?? [])
     }
 
     // MARK: - Visited
@@ -45,7 +49,7 @@ class ReviewStore {
         visitedIDs.formUnion(new)
         let snapshot = visitedIDs
         DispatchQueue.global(qos: .utility).async {
-            UserDefaults.standard.set(Array(snapshot), forKey: self.visitedKey)
+            self.defaults.set(Array(snapshot), forKey: self.visitedKey)
         }
     }
 
@@ -75,7 +79,7 @@ class ReviewStore {
     private func persistStops() {
         let snapshot = stoppedAtIDs
         DispatchQueue.global(qos: .utility).async {
-            UserDefaults.standard.set(Array(snapshot), forKey: self.stopsKey)
+            self.defaults.set(Array(snapshot), forKey: self.stopsKey)
         }
     }
 
@@ -86,7 +90,7 @@ class ReviewStore {
         reviewedIDs.insert(id)
         let snapshot = reviewedIDs
         DispatchQueue.global(qos: .utility).async {
-            UserDefaults.standard.set(Array(snapshot), forKey: self.key)
+            self.defaults.set(Array(snapshot), forKey: self.key)
         }
     }
 
@@ -101,7 +105,7 @@ class ReviewStore {
         reviewedIDs.subtract(ids)
         let snapshot = reviewedIDs
         DispatchQueue.global(qos: .utility).async {
-            UserDefaults.standard.set(Array(snapshot), forKey: self.key)
+            self.defaults.set(Array(snapshot), forKey: self.key)
         }
     }
 }

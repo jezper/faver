@@ -23,6 +23,7 @@ struct BrowseView: View {
                         Text("Reviewed").tag(true)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("browse-scope")
                     .padding(.horizontal, 20)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
@@ -153,6 +154,7 @@ private struct ClusterRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(cluster.title), \(cluster.dateLabel), \(countLabel)")
         .accessibilityHint(archived ? "Opens this moment again" : "Opens this moment")
+        .accessibilityIdentifier("moment-row")
         .task(id: cluster.id) { thumbnail = await loadThumbnail() }
     }
 

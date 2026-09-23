@@ -8,6 +8,8 @@
 
 /* Begin PBXFileReference section */
 		8D2CFFED2F49076B00EC186E /* Faver.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Faver.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA0000000000000000000003 /* FaverTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FaverTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA000000000000000000000E /* FaverUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FaverUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +18,35 @@
 			path = Faver;
 			sourceTree = "<group>";
 		};
+		FA0000000000000000000002 /* FaverTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FaverTests;
+			sourceTree = "<group>";
+		};
+		FA000000000000000000000D /* FaverUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FaverUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+
 		8D2CFFEA2F49076B00EC186E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA0000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA0000000000000000000010 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -41,11 +68,43 @@
 			isa = PBXGroup;
 			children = (
 				8D2CFFED2F49076B00EC186E /* Faver.app */,
+				FA0000000000000000000003 /* FaverTests.xctest */,
+				FA000000000000000000000E /* FaverUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		FA000000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8D2CFFE52F49076B00EC186E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8D2CFFEC2F49076B00EC186E;
+			remoteInfo = Faver;
+		};
+		FA0000000000000000000016 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8D2CFFE52F49076B00EC186E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8D2CFFEC2F49076B00EC186E;
+			remoteInfo = Faver;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		FA000000000000000000000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8D2CFFEC2F49076B00EC186E /* Faver */;
+			targetProxy = FA000000000000000000000B /* PBXContainerItemProxy */;
+		};
+		FA0000000000000000000015 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8D2CFFEC2F49076B00EC186E /* Faver */;
+			targetProxy = FA0000000000000000000016 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXNativeTarget section */
 		8D2CFFEC2F49076B00EC186E /* Faver */ = {
@@ -69,6 +128,52 @@
 			productName = Faver;
 			productReference = 8D2CFFED2F49076B00EC186E /* Faver.app */;
 			productType = "com.apple.product-type.application";
+		};
+		FA0000000000000000000001 /* FaverTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FA0000000000000000000007 /* Build configuration list for PBXNativeTarget "FaverTests" */;
+			buildPhases = (
+				FA0000000000000000000004 /* Sources */,
+				FA0000000000000000000005 /* Frameworks */,
+				FA0000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FA000000000000000000000A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FA0000000000000000000002 /* FaverTests */,
+			);
+			name = FaverTests;
+			packageProductDependencies = (
+			);
+			productName = FaverTests;
+			productReference = FA0000000000000000000003 /* FaverTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		FA000000000000000000000C /* FaverUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FA0000000000000000000012 /* Build configuration list for PBXNativeTarget "FaverUITests" */;
+			buildPhases = (
+				FA000000000000000000000F /* Sources */,
+				FA0000000000000000000010 /* Frameworks */,
+				FA0000000000000000000011 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FA0000000000000000000015 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FA000000000000000000000D /* FaverUITests */,
+			);
+			name = FaverUITests;
+			packageProductDependencies = (
+			);
+			productName = FaverUITests;
+			productReference = FA000000000000000000000E /* FaverUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -100,6 +205,8 @@
 			projectRoot = "";
 			targets = (
 				8D2CFFEC2F49076B00EC186E /* Faver */,
+				FA0000000000000000000001 /* FaverTests */,
+				FA000000000000000000000C /* FaverUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -112,10 +219,38 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FA0000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA0000000000000000000011 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8D2CFFE92F49076B00EC186E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA000000000000000000000F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -312,6 +447,88 @@
 			};
 			name = Release;
 		};
+		FA0000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SUPDJZHQDA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jezper.Faver.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Faver.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Faver";
+				BUNDLE_LOADER = "$(TEST_HOST)";
+			};
+			name = Debug;
+		};
+		FA0000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SUPDJZHQDA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jezper.Faver.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Faver.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Faver";
+				BUNDLE_LOADER = "$(TEST_HOST)";
+			};
+			name = Release;
+		};
+		FA0000000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SUPDJZHQDA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jezper.Faver.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Faver;
+			};
+			name = Debug;
+		};
+		FA0000000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SUPDJZHQDA;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jezper.Faver.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Faver;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -329,6 +546,24 @@
 			buildConfigurations = (
 				8D2CFFF92F49076D00EC186E /* Debug */,
 				8D2CFFFA2F49076D00EC186E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA0000000000000000000007 /* Build configuration list for PBXNativeTarget "FaverTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA0000000000000000000008 /* Debug */,
+				FA0000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA0000000000000000000012 /* Build configuration list for PBXNativeTarget "FaverUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA0000000000000000000013 /* Debug */,
+				FA0000000000000000000014 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

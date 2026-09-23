@@ -75,48 +75,6 @@ nonisolated struct ReviewUnit: Identifiable, @unchecked Sendable {
     var isBurst: Bool { assets.count > 1 }
 }
 
-/// Photos belong to the same burst when the camera says so, or when they were taken
-/// within `window` of each other. The camera's own burst identifier only covers real
-/// burst mode; the time rule catches the far more common case of pressing the shutter
-/// four times in a row because the first one might be blurry.
-nonisolated func groupIntoUnits(_ assets: [PHAsset], window: TimeInterval = 3) -> [ReviewUnit] {
-    guard !assets.isEmpty else { return [] }
-
-    var units: [[PHAsset]] = []
-    var current: [PHAsset] = [assets[0]]
-
-    for i in 1..<assets.count {
-        let prev = assets[i - 1]
-        let curr = assets[i]
-
-        let sameCameraBurst: Bool = {
-            guard let a = prev.burstIdentifier, let b = curr.burstIdentifier else { return false }
-            return a == b
-        }()
-
-        let closeInTime: Bool = {
-            guard let a = prev.creationDate, let b = curr.creationDate else { return false }
-            return b.timeIntervalSince(a) <= window
-        }()
-
-        // A video is always its own item. Grouping one with the stills around it would
-        // hide it behind a photo, and it takes its own kind of attention to judge.
-        let groupable = prev.mediaType == .image && curr.mediaType == .image
-
-        if groupable && (sameCameraBurst || closeInTime) {
-            current.append(curr)
-        } else {
-            units.append(current)
-            current = [curr]
-        }
-    }
-    units.append(current)
-
-    return units.compactMap { group in
-        guard let first = group.first else { return nil }
-        return ReviewUnit(id: first.localIdentifier, assets: group)
-    }
-}
 
 // MARK: - Grouping structures
 
@@ -210,45 +168,31 @@ nonisolated enum MinSetSize: Int, CaseIterable {
 /// What one clustering pass produced.
 nonisolated struct ClusterResult: @unchecked Sendable {
     let clusters: [PhotoCluster]
-    /// Photos marked as reviewed inside a window that was never finished. Under the
-    /// current rules that cannot happen: a moment is marked whole, at the end, or not at
-    /// all. A mixed window is therefore left over from the builds that recorded progress
-    /// photo by photo, and those photos are owed back. See LibraryService.load().
+    /// See `strandedInWindow` in ClusterRules.swift.
     let strandedIDs: [String]
 }
 
-nonisolated func strandedIDs(in groups: [[PHAsset]], reviewedIDs: Set<String>) -> [String] {
-    groups.flatMap { group -> [String] in
-        let seen = group.filter { reviewedIDs.contains($0.localIdentifier) }
-        guard !seen.isEmpty, seen.count < group.count else { return [] }
-        return seen.map { $0.localIdentifier }
-    }
+nonisolated private func snap(_ asset: PHAsset) -> Snap {
+    Snap(
+        id: asset.localIdentifier,
+        date: asset.creationDate,
+        latitude: asset.location?.coordinate.latitude,
+        longitude: asset.location?.coordinate.longitude,
+        isFavorite: asset.isFavorite,
+        isVideo: asset.mediaType == .video,
+        burstID: asset.burstIdentifier
+    )
 }
 
 /// Turns one time window into a cluster, or nothing if there is no reason to show it.
-///
-/// A window is skipped when it was already curated before Faver ever saw it: someone
-/// favorited in there, and not a single photo in the window has been through the app.
-/// That library was tidied by hand, and re-reviewing it wastes the user's time.
-///
-/// Once Faver *has* been in a window, the favorites in it are the user's own, made
-/// here. Skipping then would hide every photo they had not reached yet — favorite the
-/// third photo of two hundred and the remaining hundred and ninety-seven would vanish
-/// with no way back in. A complete pass over the library is the whole point, so the
-/// window stays.
+/// The decision itself lives in `isPreCurated`; this only carries the assets.
 nonisolated private func makeCluster(
     from group: [PHAsset],
+    snaps: [Snap],
     reviewedIDs: Set<String>,
     visitedIDs: Set<String>
 ) -> PhotoCluster? {
-    // Visited, not just reviewed. Under the whole-moment rule nothing is marked reviewed
-    // until the last step, so favoriting one photo and leaving would otherwise make this
-    // window look like somebody else's curation and drop it entirely.
-    let seenHere = group.contains {
-        reviewedIDs.contains($0.localIdentifier) || visitedIDs.contains($0.localIdentifier)
-    }
-    let curatedElsewhere = !seenHere && group.contains { $0.isFavorite }
-    guard !curatedElsewhere else { return nil }
+    guard !isPreCurated(snaps, reviewed: reviewedIDs, visited: visitedIDs) else { return nil }
 
     // Finished moments are kept rather than dropped, so they can be found again in the
     // archive and gone back into. They are filtered out of the queue, not out of memory.
@@ -265,6 +209,39 @@ nonisolated private func makeCluster(
     )
 }
 
+/// Splits assets into windows at the given boundaries and builds a cluster from each.
+nonisolated private func assemble(
+    _ assets: [PHAsset],
+    snaps: [Snap],
+    boundaries: Set<Int>,
+    reviewedIDs: Set<String>,
+    visitedIDs: Set<String>
+) -> ClusterResult {
+    var clusters: [PhotoCluster] = []
+    var stranded: [String] = []
+
+    var start = 0
+    var cut = boundaries.sorted()
+    cut.append(assets.count)
+
+    for end in cut where end > start {
+        let group = Array(assets[start..<end])
+        let groupSnaps = Array(snaps[start..<end])
+        if let cluster = makeCluster(
+            from: group,
+            snaps: groupSnaps,
+            reviewedIDs: reviewedIDs,
+            visitedIDs: visitedIDs
+        ) {
+            clusters.append(cluster)
+        }
+        stranded.append(contentsOf: strandedInWindow(groupSnaps, reviewed: reviewedIDs))
+        start = end
+    }
+
+    return ClusterResult(clusters: clusters, strandedIDs: stranded)
+}
+
 /// Plain time-window grouping. Only reached for libraries too small for the smart rules
 /// to have anything to work with.
 nonisolated func buildClusters(
@@ -274,46 +251,19 @@ nonisolated func buildClusters(
     gapThreshold: TimeInterval = 3 * 3600
 ) -> ClusterResult {
     guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
+    let snaps = allAssets.map(snap)
 
-    var groups: [[PHAsset]] = []
-    var currentGroup: [PHAsset] = [allAssets[0]]
-
-    for i in 1..<allAssets.count {
-        let prev = allAssets[i - 1]
-        let curr = allAssets[i]
-        if let prevDate = prev.creationDate,
-           let currDate = curr.creationDate,
-           currDate.timeIntervalSince(prevDate) > gapThreshold {
-            groups.append(currentGroup)
-            currentGroup = [curr]
-        } else {
-            currentGroup.append(curr)
-        }
+    var boundaries: Set<Int> = []
+    for i in 1..<max(snaps.count, 1) {
+        guard let previous = snaps[i - 1].date, let current = snaps[i].date else { continue }
+        if current.timeIntervalSince(previous) > gapThreshold { boundaries.insert(i) }
     }
-    if !currentGroup.isEmpty { groups.append(currentGroup) }
-
-    return ClusterResult(
-        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs) },
-        strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
-    )
+    return assemble(allAssets, snaps: snaps, boundaries: boundaries,
+                    reviewedIDs: reviewedIDs, visitedIDs: visitedIDs)
 }
 
-/// Smart clustering: three-tier boundary detection.
-///
-/// **Tier 1 — day gap (hard rule, always splits)**
-/// If there are ≥ 24 hours between consecutive photos, at least one full calendar
-/// day had no photos. That stretch is always its own set, regardless of anything else.
-///
-/// **Tier 2 — time gap (adaptive)**
-/// Burst gaps (< 60 s) are excluded so rapid-fire shooting doesn't skew the
-/// calculation. The 90th percentile of the remaining pauses is the threshold
-/// (min 30 min, max 18 h — within-day only, since tier 1 handles overnight gaps).
-///
-/// **Tier 3 — location change**
-/// If you've paused ≥ 5 min AND the next geotagged photo is > 1 km away, that's
-/// a venue change — even if the time gap wouldn't have triggered tier 2. This
-/// keeps "beach morning / fair afternoon / home evening" as three sets on the
-/// same day. Photos without GPS fall back to tier 2 only.
+/// Smart clustering. The rules themselves are in ClusterRules.swift, where they can be
+/// tested without a photo library.
 nonisolated func buildSmartClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
@@ -322,76 +272,23 @@ nonisolated func buildSmartClusters(
 ) -> ClusterResult {
     guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
     guard allAssets.count >= 2 else {
-        return buildClusters(from: allAssets, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs, gapThreshold: 3600)
+        return buildClusters(from: allAssets, reviewedIDs: reviewedIDs,
+                             visitedIDs: visitedIDs, gapThreshold: 3600)
     }
+    let snaps = allAssets.map(snap)
+    let boundaries = windowBoundaries(snaps, sensitivity: sensitivity)
+    return assemble(allAssets, snaps: snaps, boundaries: boundaries,
+                    reviewedIDs: reviewedIDs, visitedIDs: visitedIDs)
+}
 
-    // Compute adaptive within-day threshold from meaningful (≥ 60 s) gaps
-    var meaningfulGaps: [TimeInterval] = []
-    for i in 1..<allAssets.count {
-        guard let prev = allAssets[i - 1].creationDate,
-              let curr = allAssets[i].creationDate else { continue }
-        let gap = curr.timeIntervalSince(prev)
-        if gap >= 60 { meaningfulGaps.append(gap) }
+/// Folds a moment's photos into the positions the review pager pages through.
+nonisolated func groupIntoUnits(_ assets: [PHAsset], window: TimeInterval = 3) -> [ReviewUnit] {
+    guard !assets.isEmpty else { return [] }
+    return burstRuns(assets.map(snap), window: window).compactMap { range in
+        let group = Array(assets[range])
+        guard let first = group.first else { return nil }
+        return ReviewUnit(id: first.localIdentifier, assets: group)
     }
-
-    let timeThreshold: TimeInterval
-    if meaningfulGaps.isEmpty {
-        timeThreshold = 18 * 3600
-    } else {
-        let sorted = meaningfulGaps.sorted()
-        let p90 = sorted[Int(Double(sorted.count - 1) * 0.90)]
-        // Cap at 18 h: tier 1 handles anything ≥ 24 h, so within-day logic
-        // only needs to cover the range up to a single long day.
-        timeThreshold = max(1800, min(p90, 18 * 3600))
-    }
-
-    let dayGap: TimeInterval = 24 * 3600
-    let locationThreshold = sensitivity.locationThreshold
-    let minTimeForLocationSplit = sensitivity.minPauseTime
-
-    var groups: [[PHAsset]] = []
-    var currentGroup: [PHAsset] = [allAssets[0]]
-
-    for i in 1..<allAssets.count {
-        let prev = allAssets[i - 1]
-        let curr = allAssets[i]
-
-        guard let prevDate = prev.creationDate,
-              let currDate = curr.creationDate else {
-            currentGroup.append(curr)
-            continue
-        }
-
-        let timeGap = currDate.timeIntervalSince(prevDate)
-        var isBoundary = false
-
-        if timeGap >= dayGap {
-            // Tier 1: full-day gap → isolated stretch, always split
-            isBoundary = true
-        } else if timeGap >= timeThreshold {
-            // Tier 2: long within-day pause
-            isBoundary = true
-        } else if timeGap >= minTimeForLocationSplit,
-                  let prevLoc = prev.location,
-                  let currLoc = curr.location,
-                  prevLoc.distance(from: currLoc) > locationThreshold {
-            // Tier 3: paused + moved to a different venue
-            isBoundary = true
-        }
-
-        if isBoundary {
-            groups.append(currentGroup)
-            currentGroup = [curr]
-        } else {
-            currentGroup.append(curr)
-        }
-    }
-    if !currentGroup.isEmpty { groups.append(currentGroup) }
-
-    return ClusterResult(
-        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs) },
-        strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
-    )
 }
 
 // MARK: - Grouping helpers

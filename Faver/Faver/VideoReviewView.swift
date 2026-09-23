@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import Photos
 import SwiftUI
@@ -47,6 +48,8 @@ struct VideoReviewView: View {
         .onDisappear {
             player?.pause()
             player = nil
+            // Hands audio back, so whatever was playing before can resume.
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
 
@@ -105,6 +108,15 @@ struct VideoReviewView: View {
         isPreparing = true
         defer { isPreparing = false }
         guard let item = await Self.playerItem(for: asset) else { return }
+
+        // Without this the app keeps iOS's default audio session, which obeys the
+        // ring/silent switch — so videos played silently for anyone with the switch on,
+        // with nothing on screen to explain why. Videos are judged partly on their sound,
+        // and it is asked for by tapping play, so playback is the right category.
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .moviePlayback)
+        try? session.setActive(true)
+
         let avPlayer = AVPlayer(playerItem: item)
         player = avPlayer
         avPlayer.play()
