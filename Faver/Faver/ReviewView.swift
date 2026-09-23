@@ -33,9 +33,15 @@ struct ReviewView: View {
             // Photo pager + completion page
             TabView(selection: $currentPage) {
                 ForEach(Array(cluster.assetsToReview.enumerated()), id: \.element.localIdentifier) { i, asset in
-                    ZoomableImageView(asset: asset)
-                        .tag(i)
-                        .ignoresSafeArea()
+                    Group {
+                        if asset.mediaType == .video {
+                            VideoReviewView(asset: asset)
+                        } else {
+                            ZoomableImageView(asset: asset)
+                        }
+                    }
+                    .tag(i)
+                    .ignoresSafeArea()
                 }
                 completionPage
                     .tag(cluster.assetsToReview.count)
