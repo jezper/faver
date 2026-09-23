@@ -128,10 +128,6 @@ final class LibraryService: NSObject, ObservableObject {
 
         // Read all settings eagerly on @MainActor before any async boundary.
         let reviewedIDs = ReviewStore.shared.reviewedIDs
-        let modeRaw = UserDefaults.standard.string(forKey: "clusterMode") ?? ClusterMode.smart.rawValue
-        let mode = ClusterMode(rawValue: modeRaw) ?? .smart
-        let gapRaw = UserDefaults.standard.string(forKey: "clusterGap") ?? ClusterGap.medium.rawValue
-        let gap = ClusterGap(rawValue: gapRaw) ?? .medium
         let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
         let includeScreenshots = UserDefaults.standard.bool(forKey: "includeScreenshots")
@@ -161,12 +157,7 @@ final class LibraryService: NSObject, ObservableObject {
                 assets.reserveCapacity(result.count)
                 result.enumerateObjects { asset, _, _ in assets.append(asset) }
 
-                switch mode {
-                case .smart:
-                    return (result.count, buildSmartClusters(from: assets, reviewedIDs: reviewedIDs, sensitivity: sensitivity))
-                case .fixed:
-                    return (result.count, buildClusters(from: assets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold))
-                }
+                return (result.count, buildSmartClusters(from: assets, reviewedIDs: reviewedIDs, sensitivity: sensitivity))
             }.value
 
             // Photos left stranded half-way through a moment by the builds that recorded

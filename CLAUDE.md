@@ -100,13 +100,16 @@ when the app returns to the foreground, because Faver's own favorite writes are 
 changes too and reloading on each would re-cluster everything on every heart tap.
 
 ### Clustering (Cluster.swift)
-Two modes. Fixed calls `buildClusters(from:reviewedIDs:gapThreshold:)` with a hard
-threshold from `ClusterGap` (1 h / 3 h / 8 h). Smart (`buildSmartClusters`) uses three
-tiers:
+One mode. `buildSmartClusters` uses three tiers:
 - **Day gap**: ≥ 24 h always splits.
 - **Time gap**: 90th percentile of gaps ≥ 60 s (bursts excluded), clamped 30 min – 18 h.
 - **Location change**: both photos geotagged, paused past `SmartSensitivity.minPauseTime`
   (2 / 3 / 8 min) and moved past `locationThreshold` (1.5 / 3 / 5 km) → new venue.
+
+`SmartSensitivity` is the only grouping control. A Fixed mode with its own `ClusterGap`
+threshold used to sit alongside it; it was a blunter version of tier 2 with tiers 1 and 3
+missing, so it was removed rather than maintained. `buildClusters` survives only as the
+fallback for libraries of fewer than two photos.
 
 `makeCluster` decides whether a window is worth showing. A window is skipped only if it
 was curated before Faver ever saw it — it contains a favorite and none of its photos are

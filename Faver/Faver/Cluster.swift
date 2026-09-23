@@ -1,36 +1,6 @@
 import CoreLocation
 import Photos
 
-// MARK: - ClusterGap
-
-nonisolated enum ClusterGap: String, CaseIterable {
-    case narrow, medium, broad
-
-    var threshold: TimeInterval {
-        switch self {
-        case .narrow: return 3600
-        case .medium: return 3 * 3600
-        case .broad:  return 8 * 3600
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .narrow: return "Narrow"
-        case .medium: return "Medium"
-        case .broad:  return "Broad"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .narrow: return "~1 hour"
-        case .medium: return "~3 hours"
-        case .broad:  return "~8 hours"
-        }
-    }
-}
-
 // MARK: - PhotoCluster
 
 /// Unchecked Sendable on purpose. PHAsset is a read-only snapshot whose properties are
@@ -235,19 +205,6 @@ nonisolated enum MinSetSize: Int, CaseIterable {
     }
 }
 
-// MARK: - ClusterMode
-
-nonisolated enum ClusterMode: String, CaseIterable {
-    case smart, fixed
-
-    var label: String {
-        switch self {
-        case .smart: return "Smart"
-        case .fixed: return "Fixed"
-        }
-    }
-}
-
 // MARK: - Clustering
 
 /// What one clustering pass produced.
@@ -299,7 +256,8 @@ nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<Str
     )
 }
 
-/// Groups ALL photos by time window, then filters each group to only what still needs reviewing.
+/// Plain time-window grouping. Only reached for libraries too small for the smart rules
+/// to have anything to work with.
 nonisolated func buildClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
