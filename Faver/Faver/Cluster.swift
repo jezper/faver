@@ -178,6 +178,34 @@ enum ClusterMode: String, CaseIterable {
 
 // MARK: - Clustering
 
+/// Turns one time window into a cluster, or nothing if there is no reason to show it.
+///
+/// A window is skipped when it was already curated before Faver ever saw it: someone
+/// favorited in there, and not a single photo in the window has been through the app.
+/// That library was tidied by hand, and re-reviewing it wastes the user's time.
+///
+/// Once Faver *has* been in a window, the favorites in it are the user's own, made
+/// here. Skipping then would hide every photo they had not reached yet — favorite the
+/// third photo of two hundred and the remaining hundred and ninety-seven would vanish
+/// with no way back in. A complete pass over the library is the whole point, so the
+/// window stays.
+private func makeCluster(from group: [PHAsset], reviewedIDs: Set<String>) -> PhotoCluster? {
+    let seenHere = group.contains { reviewedIDs.contains($0.localIdentifier) }
+    let curatedElsewhere = !seenHere && group.contains { $0.isFavorite }
+    guard !curatedElsewhere else { return nil }
+
+    let toReview = group.filter { !reviewedIDs.contains($0.localIdentifier) }
+    guard !toReview.isEmpty else { return nil }
+
+    return PhotoCluster(
+        id: group.first?.localIdentifier ?? UUID().uuidString,
+        assetsToReview: toReview,
+        totalInWindow: group.count,
+        anchorDate: group.first?.creationDate,
+        firstLocationAsset: group.first(where: { $0.location != nil })
+    )
+}
+
 /// Groups ALL photos by time window, then filters each group to only what still needs reviewing.
 func buildClusters(
     from allAssets: [PHAsset],
@@ -203,20 +231,7 @@ func buildClusters(
     }
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
-    return groups.compactMap { group in
-        // If any photo in this window is already a favourite, the moment has
-        // been curated — skip the whole group regardless of unreviewed photos.
-        guard !group.contains(where: { $0.isFavorite }) else { return nil }
-        let toReview = group.filter { !reviewedIDs.contains($0.localIdentifier) }
-        guard !toReview.isEmpty else { return nil }
-        return PhotoCluster(
-            id: group.first?.localIdentifier ?? UUID().uuidString,
-            assetsToReview: toReview,
-            totalInWindow: group.count,
-            anchorDate: group.first?.creationDate,
-            firstLocationAsset: group.first(where: { $0.location != nil })
-        )
-    }
+    return groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) }
 }
 
 /// Smart clustering: three-tier boundary detection.
@@ -308,20 +323,7 @@ func buildSmartClusters(
     }
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
-    return groups.compactMap { group in
-        // If any photo in this window is already a favourite, the moment has
-        // been curated — skip the whole group regardless of unreviewed photos.
-        guard !group.contains(where: { $0.isFavorite }) else { return nil }
-        let toReview = group.filter { !reviewedIDs.contains($0.localIdentifier) }
-        guard !toReview.isEmpty else { return nil }
-        return PhotoCluster(
-            id: group.first?.localIdentifier ?? UUID().uuidString,
-            assetsToReview: toReview,
-            totalInWindow: group.count,
-            anchorDate: group.first?.creationDate,
-            firstLocationAsset: group.first(where: { $0.location != nil })
-        )
-    }
+    return groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) }
 }
 
 // MARK: - Grouping helpers

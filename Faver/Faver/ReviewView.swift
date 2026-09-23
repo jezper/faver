@@ -3,8 +3,12 @@ import SwiftUI
 
 /// Full-screen, immersive photo review for a single moment.
 /// Swipe freely through all photos; tap the heart to toggle each one.
-/// After the last photo, one more swipe reveals a completion page where the
-/// user explicitly marks the moment as reviewed — or keeps it for later.
+/// After the last photo, one more swipe reveals a completion page.
+///
+/// Every photo is recorded as seen the moment it is the one on screen, so leaving is
+/// always free: the next visit rebuilds the moment out of what is left, which lands
+/// the user on exactly the photo they stopped at. Nothing needs to be confirmed on
+/// the way out, because nothing is lost by going.
 struct ReviewView: View {
     let library: LibraryService
     let cluster: PhotoCluster
@@ -12,7 +16,6 @@ struct ReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var currentPage: Int = 0
     @State private var favoritedIDs: Set<String> = []
-    @State private var showEarlyExitSheet = false
 
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
@@ -49,11 +52,6 @@ struct ReviewView: View {
                 .ignoresSafeArea(edges: .bottom)
             }
 
-            // Early-exit overlay — slides up when user taps Done before finishing
-            if showEarlyExitSheet {
-                earlyExitOverlay
-                    .transition(.opacity)
-            }
         }
         .statusBarHidden()
         .task {
@@ -62,7 +60,12 @@ struct ReviewView: View {
                 .filter { $0.isFavorite }
                 .map { $0.localIdentifier }
             favoritedIDs = Set(ids)
+            markCurrentSeen()
         }
+        // Recorded per page rather than in the pager's ForEach: the paging TabView
+        // builds the neighbouring pages before they are ever shown, so marking on
+        // their appearance would count photos the user never actually looked at.
+        .onChange(of: currentPage) { _, _ in markCurrentSeen() }
     }
 
     // MARK: - Top bar
@@ -191,62 +194,12 @@ struct ReviewView: View {
         .ignoresSafeArea()
     }
 
-    // MARK: - Early exit overlay
-
-    private var earlyExitOverlay: some View {
-        ZStack(alignment: .bottom) {
-            // Scrim — tap to cancel
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        showEarlyExitSheet = false
-                    }
-                }
-
-            // Bottom panel
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Text("Leave this moment?")
-                        .font(.system(size: 20, weight: .bold, design: .serif))
-                        .foregroundStyle(.white)
-                    Text("You haven't seen every photo yet.")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.55))
-                        .multilineTextAlignment(.center)
-                }
-
-                // Primary action — keep browsing later
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        showEarlyExitSheet = false
-                    }
-                    dismiss()
-                } label: {
-                    Text("Keep for later")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.accent, in: RoundedRectangle(cornerRadius: 16))
-                }
-                .buttonStyle(PressScaleStyle())
-
-                // Deliberate action — slide to mark all as reviewed
-                SlideToConfirm(label: "Slide to mark as reviewed") {
-                    cluster.assetsToReview.forEach { library.markSeen($0) }
-                    dismiss()
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 28)
-            .padding(.bottom, 44)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-        }
-        .ignoresSafeArea()
-    }
-
     // MARK: - Actions
+
+    private func markCurrentSeen() {
+        guard let asset = currentAsset else { return }
+        library.markSeen(asset)
+    }
 
     private func toggleFavorite() {
         guard let asset = currentAsset else { return }
@@ -262,65 +215,9 @@ struct ReviewView: View {
     }
 
     private func done() {
-        // Guard: the user must reach the completion page to mark a set as handled.
-        // Pressing Done on any photo page shows the exit sheet instead of silently dismissing.
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            showEarlyExitSheet = true
-        }
-    }
-}
-
-// MARK: - Slide to confirm
-
-/// Full-width draggable track. Drag the thumb ≥ 80 % to the right to fire the action.
-/// Releases below the threshold spring back to the left.
-private struct SlideToConfirm: View {
-    let label: String
-    let action: () -> Void
-
-    @State private var dragOffset: CGFloat = 0
-    private let trackHeight: CGFloat = 56
-    private let thumbSize:   CGFloat = 44
-
-    var body: some View {
-        GeometryReader { geo in
-            let maxDrag = geo.size.width - thumbSize - 12
-            let progress = maxDrag > 0 ? max(0, min(1, dragOffset / maxDrag)) : 0
-
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .frame(height: trackHeight)
-
-                Text(label)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(max(0, 0.6 - progress * 0.6)))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: trackHeight)
-
-                Circle()
-                    .fill(Color.accent)
-                    .frame(width: thumbSize, height: thumbSize)
-                    .offset(x: 6 + dragOffset)
-                    .shadow(color: Color.accent.opacity(0.4), radius: 8, x: 0, y: 2)
-            }
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = max(0, min(value.translation.width, maxDrag))
-                    }
-                    .onEnded { _ in
-                        if maxDrag > 0, dragOffset / maxDrag >= 0.8 {
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            action()
-                        }
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            dragOffset = 0
-                        }
-                    }
-            )
-        }
-        .frame(height: trackHeight)
+        // Nothing to confirm. Every photo the user reached is already recorded, and
+        // the moment they leave behind keeps exactly the photos they have not seen.
+        dismiss()
     }
 }
 
