@@ -128,6 +128,7 @@ final class LibraryService: NSObject, ObservableObject {
 
         // Read all settings eagerly on @MainActor before any async boundary.
         let reviewedIDs = ReviewStore.shared.reviewedIDs
+        let visitedIDs = ReviewStore.shared.visitedIDs
         let sensitivityRaw = UserDefaults.standard.string(forKey: "smartSensitivity") ?? SmartSensitivity.balanced.rawValue
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
         let includeScreenshots = UserDefaults.standard.bool(forKey: "includeScreenshots")
@@ -157,7 +158,12 @@ final class LibraryService: NSObject, ObservableObject {
                 assets.reserveCapacity(result.count)
                 result.enumerateObjects { asset, _, _ in assets.append(asset) }
 
-                return (result.count, buildSmartClusters(from: assets, reviewedIDs: reviewedIDs, sensitivity: sensitivity))
+                return (result.count, buildSmartClusters(
+                    from: assets,
+                    reviewedIDs: reviewedIDs,
+                    visitedIDs: visitedIDs,
+                    sensitivity: sensitivity
+                ))
             }.value
 
             // Photos left stranded half-way through a moment by the builds that recorded
@@ -200,15 +206,47 @@ final class LibraryService: NSObject, ObservableObject {
         }
     }
 
-    /// Puts one moment back in the queue, from the archive.
-    func reviewAgain(_ cluster: PhotoCluster) {
-        ReviewStore.shared.unmark(cluster.allAssets.map { $0.localIdentifier })
-        ReviewStore.shared.clearStops(within: cluster.allAssets.map(\.localIdentifier))
-        load()
+    /// Records that the user has been inside this moment. Finishes nothing; see
+    /// ReviewStore.visitedIDs for why it has to be written down at all.
+    func markVisited(_ cluster: PhotoCluster) {
+        ReviewStore.shared.markVisited(cluster.allAssets.map(\.localIdentifier))
     }
 
-    func markSeen(_ asset: PHAsset) {
-        ReviewStore.shared.markReviewed(asset.localIdentifier)
+    /// The one place a moment becomes reviewed, and the reason the home screen no longer
+    /// reloads on the way back from one.
+    ///
+    /// Finishing a moment used to trigger a full `load()`: the whole photo library
+    /// fetched again and every moment in it regrouped, to learn one thing already known.
+    /// The home screen went blank for seconds each time. Nothing else can have changed —
+    /// the photos that moved are exactly this moment's — so the one cluster is replaced
+    /// where it stands and the rest is left alone.
+    func markMomentReviewed(_ cluster: PhotoCluster) {
+        cluster.assetsToReview.forEach { ReviewStore.shared.markReviewed($0.localIdentifier) }
+        ReviewStore.shared.clearStops(within: cluster.allAssets.map(\.localIdentifier))
+        replace(cluster, toReview: [])
+    }
+
+    /// Puts one moment back in the queue, from the archive.
+    func reviewAgain(_ cluster: PhotoCluster) {
+        ReviewStore.shared.unmark(cluster.allAssets.map(\.localIdentifier))
+        ReviewStore.shared.clearStops(within: cluster.allAssets.map(\.localIdentifier))
+        replace(cluster, toReview: cluster.allAssets)
+    }
+
+    private func replace(_ cluster: PhotoCluster, toReview: [PHAsset]) {
+        guard let i = clusters.firstIndex(where: { $0.id == cluster.id }) else {
+            load()   // the grouping moved under us; fall back to the slow, correct path
+            return
+        }
+        clusters[i] = PhotoCluster(
+            id: cluster.id,
+            allAssets: cluster.allAssets,
+            assetsToReview: toReview,
+            units: toReview.isEmpty ? [] : groupIntoUnits(toReview),
+            totalInWindow: cluster.totalInWindow,
+            anchorDate: cluster.anchorDate,
+            firstLocationAsset: cluster.firstLocationAsset
+        )
     }
 
     // MARK: - Ranking

@@ -20,15 +20,33 @@ class ReviewStore {
 
     private let key = "reviewedPhotoIDs"
     private let stopsKey = "stoppedAtPhotoIDs"
+    private let visitedKey = "visitedPhotoIDs"
 
     /// In-memory set, loaded once at init. Fast O(1) reads for the clustering pipeline.
     private(set) var reviewedIDs: Set<String>
     /// Photos the user was looking at when they left the moment containing them.
     private var stoppedAtIDs: Set<String>
+    /// Photos in moments the user has opened. Not progress — opening a moment finishes
+    /// nothing. It only records that Faver has been in here, which is what tells a
+    /// library curated by hand years ago apart from one being curated in Faver now.
+    private(set) var visitedIDs: Set<String>
 
     private init() {
         reviewedIDs = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
         stoppedAtIDs = Set(UserDefaults.standard.stringArray(forKey: stopsKey) ?? [])
+        visitedIDs = Set(UserDefaults.standard.stringArray(forKey: visitedKey) ?? [])
+    }
+
+    // MARK: - Visited
+
+    func markVisited(_ ids: [String]) {
+        let new = Set(ids).subtracting(visitedIDs)
+        guard !new.isEmpty else { return }
+        visitedIDs.formUnion(new)
+        let snapshot = visitedIDs
+        DispatchQueue.global(qos: .utility).async {
+            UserDefaults.standard.set(Array(snapshot), forKey: self.visitedKey)
+        }
     }
 
     // MARK: - Where the user stopped

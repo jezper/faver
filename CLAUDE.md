@@ -78,13 +78,17 @@ There are no unit tests and no lint step.
 `clusterMode`, `smartSensitivity`, `clusterGap` and `minSetSize` from UserDefaults before
 crossing the boundary.
 
-After a review session ends, `onDismiss: { library.load() }` re-clusters so reviewed
-photos disappear.
+A review session ends without reloading. `markMomentReviewed` replaces that one cluster
+in place, because nothing else can have changed. A full `load()` is for the three things
+that really do change everything: first launch, a grouping setting, and the photo library
+itself. The loading screen only appears when there are no clusters to show yet; a refresh
+behind a drawn home screen leaves it alone.
 
-`ReviewStore` holds two separate things: `reviewedIDs`, the photos in moments that have
+`ReviewStore` holds three separate things: `reviewedIDs`, the photos in moments that have
 been through the last step, and `stoppedAtIDs`, the photos the user was on when they last
-left. Keeping them apart is what lets a moment stay whole while still resuming correctly.
-`unmark(_:)` puts photos back.
+left, and `visitedIDs`, the photos in moments that have merely been opened. Keeping them
+apart is what lets a moment stay whole while still resuming correctly. `unmark(_:)` puts
+photos back.
 
 **Both are keyed to photo ids, never to moment ids.** Moments are derived from the
 grouping settings on every load, so a moment's identity changes the moment someone moves
@@ -113,8 +117,10 @@ fallback for libraries of fewer than two photos.
 
 `makeCluster` decides whether a window is worth showing. A window is skipped only if it
 was curated before Faver ever saw it — it contains a favorite and none of its photos are
-in `reviewedIDs`. Favorites made inside Faver must never hide photos the user has not
-reached.
+in `reviewedIDs` **or** `visitedIDs`. Visited matters: under the whole-moment rule nothing
+is marked reviewed until the last step, so without it, favoriting one photo and leaving
+would make the window look like somebody else's curation and drop it. Favorites made
+inside Faver must never hide photos the user has not reached.
 
 `groupIntoUnits` folds each cluster's photos into `ReviewUnit`s — one photo, or a burst.
 Computed once when the cluster is built, stored on `PhotoCluster.units`, and used as the

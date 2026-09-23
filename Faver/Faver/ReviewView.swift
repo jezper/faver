@@ -122,6 +122,10 @@ struct ReviewView: View {
                 .filter { $0.isFavorite }
                 .map { $0.localIdentifier }
             favoritedIDs = Set(ids)
+            // Opening finishes nothing. It records that Faver has been in here, which is
+            // the only thing separating a moment being curated now from one curated by
+            // hand years before the app existed.
+            if !revisiting { library.markVisited(cluster) }
         }
         // Remembering where the user is, not spending anything. Recorded here rather than
         // in the pager's ForEach because the paging TabView builds the neighbouring pages
@@ -366,8 +370,7 @@ struct ReviewView: View {
 
     /// The one place a moment becomes reviewed. All of it, at once, on purpose.
     private func markMomentReviewed() {
-        cluster.assetsToReview.forEach { library.markSeen($0) }
-        ReviewStore.shared.clearStops(within: momentAssetIDs)
+        library.markMomentReviewed(cluster)
     }
 
     private func toggleFavorite() {

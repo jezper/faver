@@ -67,7 +67,10 @@ struct HomeView: View {
                 scrollIndex = max(0, homeClusters.count - 1)
             }
         }
-        .fullScreenCover(item: $reviewCluster, onDismiss: { library.load() }) { cluster in
+        // No reload here. Finishing a moment updates that one moment in place, and
+        // leaving without finishing changed nothing at all, so the home screen no longer
+        // blanks itself for seconds on the way back from every session.
+        .fullScreenCover(item: $reviewCluster) { cluster in
             ReviewView(library: library, cluster: cluster, revisiting: reviewRevisiting)
         }
         .sheet(isPresented: $showBrowse, onDismiss: presentPending) {
@@ -117,7 +120,9 @@ struct HomeView: View {
         let s = library.authorizationStatus
         if s == .notDetermined { return .onboarding }
         if s == .denied || s == .restricted { return .denied }
-        if library.isLoading { return .loading }
+        // Only when there is nothing to show. A refresh behind an already-drawn home
+        // screen should leave it alone rather than replacing it with a spinner.
+        if library.isLoading && library.clusters.isEmpty { return .loading }
         // An empty screen has two very different causes. Everything really is done,
         // or the minimum-size filter is hiding work that still exists. Saying
         // "you've reviewed every moment" in the second case is simply untrue, and it

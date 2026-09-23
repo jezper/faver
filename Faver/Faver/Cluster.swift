@@ -236,8 +236,17 @@ nonisolated func strandedIDs(in groups: [[PHAsset]], reviewedIDs: Set<String>) -
 /// third photo of two hundred and the remaining hundred and ninety-seven would vanish
 /// with no way back in. A complete pass over the library is the whole point, so the
 /// window stays.
-nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<String>) -> PhotoCluster? {
-    let seenHere = group.contains { reviewedIDs.contains($0.localIdentifier) }
+nonisolated private func makeCluster(
+    from group: [PHAsset],
+    reviewedIDs: Set<String>,
+    visitedIDs: Set<String>
+) -> PhotoCluster? {
+    // Visited, not just reviewed. Under the whole-moment rule nothing is marked reviewed
+    // until the last step, so favoriting one photo and leaving would otherwise make this
+    // window look like somebody else's curation and drop it entirely.
+    let seenHere = group.contains {
+        reviewedIDs.contains($0.localIdentifier) || visitedIDs.contains($0.localIdentifier)
+    }
     let curatedElsewhere = !seenHere && group.contains { $0.isFavorite }
     guard !curatedElsewhere else { return nil }
 
@@ -261,6 +270,7 @@ nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<Str
 nonisolated func buildClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
+    visitedIDs: Set<String> = [],
     gapThreshold: TimeInterval = 3 * 3600
 ) -> ClusterResult {
     guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
@@ -283,7 +293,7 @@ nonisolated func buildClusters(
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
     return ClusterResult(
-        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) },
+        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs) },
         strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
     )
 }
@@ -307,11 +317,12 @@ nonisolated func buildClusters(
 nonisolated func buildSmartClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
+    visitedIDs: Set<String> = [],
     sensitivity: SmartSensitivity = .balanced
 ) -> ClusterResult {
     guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
     guard allAssets.count >= 2 else {
-        return buildClusters(from: allAssets, reviewedIDs: reviewedIDs, gapThreshold: 3600)
+        return buildClusters(from: allAssets, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs, gapThreshold: 3600)
     }
 
     // Compute adaptive within-day threshold from meaningful (≥ 60 s) gaps
@@ -378,7 +389,7 @@ nonisolated func buildSmartClusters(
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
     return ClusterResult(
-        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) },
+        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs, visitedIDs: visitedIDs) },
         strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
     )
 }
