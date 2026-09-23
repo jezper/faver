@@ -89,11 +89,8 @@ struct MapBrowseView: View {
             if let cluster = pin.clusters.first {
                 MapClusterSheet(cluster: cluster) {
                     selectedPin = nil
+                    onSelect(cluster)
                     dismiss()
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 350_000_000)
-                        onSelect(cluster)
-                    }
                 }
             }
         }

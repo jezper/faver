@@ -57,12 +57,10 @@ struct BrowseView: View {
         }
     }
 
+    /// Hands the choice up and closes. The parent opens it once this sheet is gone.
     private func select(_ cluster: PhotoCluster) {
+        onSelect(cluster)
         dismiss()
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            onSelect(cluster)
-        }
     }
 
     // MARK: - Section header

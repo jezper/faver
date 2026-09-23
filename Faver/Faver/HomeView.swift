@@ -5,8 +5,11 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var library = LibraryService()
-    @State private var currentIndex: Int = 0
+    // Optional because .scrollPosition binds to one. Nil means "between pages".
+    @State private var scrollIndex: Int? = 0
     @State private var reviewCluster: PhotoCluster? = nil
+    /// Chosen in a sheet, opened once that sheet is actually gone. See presentPending().
+    @State private var pendingCluster: PhotoCluster? = nil
     @State private var showBrowse = false
     @State private var showSettings = false
     @State private var showMap = false
@@ -21,6 +24,8 @@ struct HomeView: View {
     // setting, which a plain .system(size:) would have ignored entirely.
     @ScaledMetric(relativeTo: .largeTitle) private var onboardingWordmark: CGFloat = 56
     @ScaledMetric(relativeTo: .largeTitle) private var loadingWordmark: CGFloat = 48
+
+    private var currentIndex: Int { scrollIndex ?? 0 }
 
     private enum HomeCardSort: String { case oldest, latest }
     private var cardSort: HomeCardSort { HomeCardSort(rawValue: sortRaw) ?? .oldest }
@@ -52,25 +57,30 @@ struct HomeView: View {
         #endif
         .onChange(of: library.clusters.count) {
             if currentIndex >= homeClusters.count {
-                currentIndex = max(0, homeClusters.count - 1)
+                scrollIndex = max(0, homeClusters.count - 1)
             }
         }
         .fullScreenCover(item: $reviewCluster, onDismiss: { library.load() }) { cluster in
             ReviewView(library: library, cluster: cluster)
         }
-        .sheet(isPresented: $showBrowse) {
-            BrowseView(library: library) { cluster in
-                reviewCluster = cluster
-            }
+        .sheet(isPresented: $showBrowse, onDismiss: presentPending) {
+            BrowseView(library: library) { pendingCluster = $0 }
         }
-        .sheet(isPresented: $showMap) {
-            MapBrowseView(library: library) { cluster in
-                reviewCluster = cluster
-            }
+        .sheet(isPresented: $showMap, onDismiss: presentPending) {
+            MapBrowseView(library: library) { pendingCluster = $0 }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(library: library)
         }
+    }
+
+    /// A moment picked inside a sheet cannot be opened until that sheet has finished
+    /// closing. Both browse screens used to hardcode a 350 ms sleep and hope, which read
+    /// as a missed tap. Waiting for the actual dismissal is both correct and faster.
+    private func presentPending() {
+        guard let cluster = pendingCluster else { return }
+        pendingCluster = nil
+        reviewCluster = cluster
     }
 
     // MARK: - State routing
@@ -173,7 +183,7 @@ struct HomeView: View {
 
     private var sortRow: some View {
         Button {
-            currentIndex = 0
+            scrollIndex = 0
             sortRaw = cardSort == .oldest ? HomeCardSort.latest.rawValue : HomeCardSort.oldest.rawValue
         } label: {
             HStack(spacing: 5) {
@@ -190,18 +200,28 @@ struct HomeView: View {
 
     // MARK: - Carousel
 
+    /// A paging ScrollView rather than a paged TabView. TabView builds every page up
+    /// front, so all five cards each loaded three thumbnails twice — thirty image
+    /// decodes on open, for four cards the user usually never swipes to. LazyHStack
+    /// builds them as they come into view.
     private func carousel(cardHeight: CGFloat) -> some View {
-        TabView(selection: $currentIndex) {
-            ForEach(Array(homeClusters.enumerated()), id: \.element.id) { i, cluster in
-                MomentCard(cluster: cluster) {
-                    reviewCluster = cluster
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(Array(homeClusters.enumerated()), id: \.element.id) { i, cluster in
+                    MomentCard(cluster: cluster) {
+                        reviewCluster = cluster
+                    }
+                    .padding(.horizontal, 20)
+                    .containerRelativeFrame(.horizontal)
+                    .frame(height: cardHeight)
+                    .id(i)
                 }
-                .padding(.horizontal, 20)
-                .frame(height: cardHeight)
-                .tag(i)
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $scrollIndex)
         .frame(height: cardHeight)
         .id(sortRaw) // recreate when sort changes so index resets cleanly
     }

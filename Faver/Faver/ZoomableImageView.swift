@@ -6,39 +6,115 @@ import SwiftUI
 /// while zoomed in, then releases at minimum scale.
 struct ZoomableImageView: View {
     let asset: PHAsset
+
     @State private var image: UIImage? = nil
+    @State private var onlyInCloud = false
 
     var body: some View {
         Group {
             if let image {
                 _ZoomScrollView(image: image)
                     .ignoresSafeArea()
+            } else if onlyInCloud {
+                cloudOnlyNotice
             } else {
                 Color.black
                     .overlay { ProgressView().tint(.white) }
             }
         }
+        // Two passes. The first takes whatever is already on the device and puts it on
+        // screen straight away; the second fetches the full original, which may need
+        // the network, and swaps it in when it arrives.
+        //
+        // This screen used to make a single maximum-size, high-quality request with
+        // the network switched on, no low-resolution pass and no timeout. On a train
+        // with bad signal the core loop of the app was a spinner on black — which the
+        // project rules forbid in as many words: never stall waiting for iCloud.
         .task(id: asset.localIdentifier) {
-            image = await loadImage()
+            image = nil
+            onlyInCloud = false
+
+            let screen = UIScreen.main.bounds.size
+            let scale = UIScreen.main.scale
+            let local = await Self.requestImage(
+                for: asset,
+                targetSize: CGSize(width: screen.width * scale, height: screen.height * scale),
+                allowsNetwork: false
+            )
+            if Task.isCancelled { return }
+
+            if let local {
+                image = local
+            } else {
+                // Nothing cached at all, so this photo lives only in iCloud. Say so
+                // rather than spinning at the user indefinitely.
+                onlyInCloud = true
+            }
+
+            let full = await Self.requestImage(
+                for: asset,
+                targetSize: PHImageManagerMaximumSize,
+                allowsNetwork: true
+            )
+            if Task.isCancelled { return }
+            if let full {
+                image = full
+                onlyInCloud = false
+            }
         }
     }
 
-    private func loadImage() async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { image, info in
-                let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool ?? false
-                if !isDegraded {
+    private var cloudOnlyNotice: some View {
+        ZStack {
+            Color.black
+            VStack(spacing: 12) {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.largeTitle)
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("Still in iCloud")
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.8))
+                Text("Fetching it now. Swipe on if you'd rather not wait.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(36)
+        }
+    }
+
+    /// Cancelling the request matters as much as making it: swiping through a set
+    /// leaves a trail of full-size decodes running for photos already off screen.
+    private static func requestImage(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        allowsNetwork: Bool
+    ) async -> UIImage? {
+        let manager = PHImageManager.default()
+        nonisolated(unsafe) var requestID: PHImageRequestID?
+
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
+                let options = PHImageRequestOptions()
+                options.isNetworkAccessAllowed = allowsNetwork
+                options.deliveryMode = allowsNetwork ? .highQualityFormat : .fastFormat
+                options.resizeMode = .fast
+                nonisolated(unsafe) var done = false
+                requestID = manager.requestImage(
+                    for: asset,
+                    targetSize: targetSize,
+                    contentMode: .aspectFit,
+                    options: options
+                ) { image, info in
+                    let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool ?? false
+                    if isDegraded { return }
+                    guard !done else { return }
+                    done = true
                     continuation.resume(returning: image)
                 }
             }
+        } onCancel: {
+            if let requestID { manager.cancelImageRequest(requestID) }
         }
     }
 }

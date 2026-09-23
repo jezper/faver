@@ -88,26 +88,27 @@ final class LibraryService: ObservableObject {
         let sensitivity = SmartSensitivity(rawValue: sensitivityRaw) ?? .balanced
 
         Task {
-            // Phase 1 — enumerate assets off the main thread (no property access).
-            let (total, allAssets): (Int, [PHAsset]) = await Task.detached(priority: .userInitiated) {
+            // Fetching and clustering happen in one detached pass. Clustering used to
+            // run back on the main actor, reading creationDate, isFavorite and location
+            // on every asset in the library, twice — on launch, on every settings
+            // change, and after every single moment reviewed. On a large library that
+            // is the price of finishing one moment, paid as a frozen screen, while the
+            // spinner meant to reassure the user could not even turn.
+            let (total, built): (Int, [PhotoCluster]) = await Task.detached(priority: .userInitiated) {
                 let options = PHFetchOptions()
                 options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
                 let result = PHAsset.fetchAssets(with: options)
                 var assets: [PHAsset] = []
                 assets.reserveCapacity(result.count)
                 result.enumerateObjects { asset, _, _ in assets.append(asset) }
-                return (result.count, assets)
-            }.value
 
-            // Phase 2 — clustering on @MainActor (PHAsset property access is @MainActor in iOS 26).
-            loadProgress = 0.88
-            let built: [PhotoCluster]
-            switch mode {
-            case .smart:
-                built = buildSmartClusters(from: allAssets, reviewedIDs: reviewedIDs, sensitivity: sensitivity)
-            case .fixed:
-                built = buildClusters(from: allAssets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold)
-            }
+                switch mode {
+                case .smart:
+                    return (result.count, buildSmartClusters(from: assets, reviewedIDs: reviewedIDs, sensitivity: sensitivity))
+                case .fixed:
+                    return (result.count, buildClusters(from: assets, reviewedIDs: reviewedIDs, gapThreshold: gap.threshold))
+                }
+            }.value
 
             totalAssets = total
             clusters = built

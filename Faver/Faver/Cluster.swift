@@ -3,7 +3,7 @@ import Photos
 
 // MARK: - ClusterGap
 
-enum ClusterGap: String, CaseIterable {
+nonisolated enum ClusterGap: String, CaseIterable {
     case narrow, medium, broad
 
     var threshold: TimeInterval {
@@ -33,7 +33,11 @@ enum ClusterGap: String, CaseIterable {
 
 // MARK: - PhotoCluster
 
-struct PhotoCluster: Identifiable {
+/// Unchecked Sendable on purpose. PHAsset is a read-only snapshot whose properties are
+/// fixed when it is fetched, and the Photos framework hands the same instance to every
+/// thread that asks. That makes it safe to read off the main actor, which is what lets
+/// clustering run without freezing the app.
+struct PhotoCluster: Identifiable, @unchecked Sendable {
     let id: String
     let assetsToReview: [PHAsset]
     let totalInWindow: Int
@@ -78,13 +82,13 @@ struct PhotoCluster: Identifiable {
 
 // MARK: - Grouping structures
 
-struct MonthSection: Identifiable {
+nonisolated struct MonthSection: Identifiable {
     let id: String         // "2010-01"
     let title: String      // "January 2010"
     let clusters: [PhotoCluster]
 }
 
-struct YearSummary: Identifiable {
+nonisolated struct YearSummary: Identifiable {
     let id: Int            // year number
     let year: Int
     let clusterCount: Int
@@ -95,7 +99,7 @@ struct YearSummary: Identifiable {
 
 /// Controls how aggressively Smart mode splits photos into separate sets.
 /// Expressed in human terms, not algorithm parameters.
-enum SmartSensitivity: String, CaseIterable {
+nonisolated enum SmartSensitivity: String, CaseIterable {
     case tight, balanced, loose
 
     var label: String {
@@ -138,7 +142,7 @@ enum SmartSensitivity: String, CaseIterable {
 /// Filter that hides clusters smaller than a given total-photo threshold.
 /// Uses `totalInWindow` (all photos in the time window, not just unreviewed)
 /// so a 100-photo vacation still shows even if 60 are already reviewed.
-enum MinSetSize: Int, CaseIterable {
+nonisolated enum MinSetSize: Int, CaseIterable {
     case all        = 1
     case moments    = 5
     case events     = 20
@@ -165,7 +169,7 @@ enum MinSetSize: Int, CaseIterable {
 
 // MARK: - ClusterMode
 
-enum ClusterMode: String, CaseIterable {
+nonisolated enum ClusterMode: String, CaseIterable {
     case smart, fixed
 
     var label: String {
@@ -189,7 +193,7 @@ enum ClusterMode: String, CaseIterable {
 /// third photo of two hundred and the remaining hundred and ninety-seven would vanish
 /// with no way back in. A complete pass over the library is the whole point, so the
 /// window stays.
-private func makeCluster(from group: [PHAsset], reviewedIDs: Set<String>) -> PhotoCluster? {
+nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<String>) -> PhotoCluster? {
     let seenHere = group.contains { reviewedIDs.contains($0.localIdentifier) }
     let curatedElsewhere = !seenHere && group.contains { $0.isFavorite }
     guard !curatedElsewhere else { return nil }
@@ -207,7 +211,7 @@ private func makeCluster(from group: [PHAsset], reviewedIDs: Set<String>) -> Pho
 }
 
 /// Groups ALL photos by time window, then filters each group to only what still needs reviewing.
-func buildClusters(
+nonisolated func buildClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
     gapThreshold: TimeInterval = 3 * 3600
@@ -250,7 +254,7 @@ func buildClusters(
 /// a venue change — even if the time gap wouldn't have triggered tier 2. This
 /// keeps "beach morning / fair afternoon / home evening" as three sets on the
 /// same day. Photos without GPS fall back to tier 2 only.
-func buildSmartClusters(
+nonisolated func buildSmartClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
     sensitivity: SmartSensitivity = .balanced
@@ -329,7 +333,7 @@ func buildSmartClusters(
 // MARK: - Grouping helpers
 
 /// Groups clusters by year, newest first
-func yearSummaries(from clusters: [PhotoCluster]) -> [YearSummary] {
+nonisolated func yearSummaries(from clusters: [PhotoCluster]) -> [YearSummary] {
     let calendar = Calendar.current
     var map: [Int: (Int, Int)] = [:]  // year → (clusterCount, photoCount)
     for cluster in clusters {
@@ -343,7 +347,7 @@ func yearSummaries(from clusters: [PhotoCluster]) -> [YearSummary] {
 }
 
 /// Groups clusters into month sections, newest first
-func groupByMonth(_ clusters: [PhotoCluster]) -> [MonthSection] {
+nonisolated func groupByMonth(_ clusters: [PhotoCluster]) -> [MonthSection] {
     let calendar = Calendar.current
     let formatter = DateFormatter()
     formatter.dateFormat = "MMMM yyyy"
@@ -373,7 +377,7 @@ func groupByMonth(_ clusters: [PhotoCluster]) -> [MonthSection] {
 }
 
 /// Returns clusters for a specific year
-func clusters(for year: Int, in all: [PhotoCluster]) -> [PhotoCluster] {
+nonisolated func clusters(for year: Int, in all: [PhotoCluster]) -> [PhotoCluster] {
     let calendar = Calendar.current
     return all.filter {
         calendar.component(.year, from: $0.anchorDate ?? Date()) == year
