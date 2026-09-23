@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var showMap = false
 
     @AppStorage("homeCardSort") private var sortRaw: String = "oldest"
+    @AppStorage("minSetSize")   private var minSetSize: Int = 1
 
     private enum HomeCardSort: String { case oldest, latest }
     private var cardSort: HomeCardSort { HomeCardSort(rawValue: sortRaw) ?? .oldest }
@@ -69,10 +70,11 @@ struct HomeView: View {
     @ViewBuilder
     private var content: some View {
         switch libraryState {
-        case .onboarding: onboardingView
-        case .denied:     deniedView
-        case .loading:    loadingView
-        case .empty:      allDoneView
+        case .onboarding:   onboardingView
+        case .denied:       deniedView
+        case .loading:      loadingView
+        case .allDone:      allDoneView
+        case .filterHiding: filterHidingView
         case .ready:
             GeometryReader { geo in
                 mainView(geo: geo)
@@ -80,14 +82,21 @@ struct HomeView: View {
         }
     }
 
-    private enum LibraryState { case onboarding, denied, loading, empty, ready }
+    private enum LibraryState { case onboarding, denied, loading, allDone, filterHiding, ready }
 
     private var libraryState: LibraryState {
         let s = library.authorizationStatus
         if s == .notDetermined { return .onboarding }
         if s == .denied || s == .restricted { return .denied }
         if library.isLoading { return .loading }
-        if library.filtered.isEmpty { return .empty }
+        // An empty screen has two very different causes. Everything really is done,
+        // or the minimum-size filter is hiding work that still exists. Saying
+        // "you've reviewed every moment" in the second case is simply untrue, and it
+        // used to happen the moment someone set the filter to 50+ and finished the
+        // big trips.
+        if library.filtered.isEmpty {
+            return library.clusters.isEmpty ? .allDone : .filterHiding
+        }
         return .ready
     }
 
@@ -120,17 +129,36 @@ struct HomeView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Spacer()
-
+        HStack(alignment: .bottom, spacing: 16) {
+            progressIndicator
+            Spacer(minLength: 8)
             Button { showSettings = true } label: {
                 Image(systemName: "gear")
                     .font(.system(size: 18))
                     .foregroundStyle(.white.opacity(0.65))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// The one number that says the library is getting shorter. Every piece of it was
+    /// already being computed and none of it was ever drawn, so the app gave a returning
+    /// user nothing to show that the last few months of sessions had added up.
+    /// Deliberately quiet: a thin line and a small number, no streak, no target, no nudge.
+    private var progressIndicator: some View {
+        let pct = Int((library.reviewedFraction * 100).rounded())
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("\(pct)% through your library")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.55))
+            ProgressView(value: library.reviewedFraction)
+                .progressViewStyle(.linear)
+                .tint(Color.accent)
+                .frame(maxWidth: 180)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(pct) percent through your library")
     }
 
     // MARK: - Sort row
@@ -212,27 +240,28 @@ struct HomeView: View {
             }
 
             // Browse all — full-width row with count on the right
-            let count = library.toReviewCount
+            let moments = library.momentCount
+            let photos = library.toReviewCount
             Button { showBrowse = true } label: {
                 HStack {
                     Text("Browse all")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("\(count) moment\(count == 1 ? "" : "s")")
+                    Text("\(moments) moment\(moments == 1 ? "" : "s")")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.40))
+                        .foregroundStyle(.white.opacity(0.5))
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.30))
+                        .foregroundStyle(.white.opacity(0.35))
                 }
                 .foregroundStyle(Color.accent)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
                 .background(Color.surface, in: RoundedRectangle(cornerRadius: 16))
             }
             .buttonStyle(PressScaleStyle())
-            .accessibilityLabel("Browse all, \(count) moment\(count == 1 ? "" : "s")")
+            .accessibilityLabel("Browse all, \(moments) moment\(moments == 1 ? "" : "s"), \(photos) photos")
         }
     }
 
@@ -339,6 +368,42 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
+            Button { showSettings = true } label: {
+                Text("Adjust filters")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.accent)
+            }
+        }
+        .padding(36)
+    }
+
+    // MARK: - Filter hiding everything
+
+    private var filterHidingView: some View {
+        let hidden = library.clusters.count
+        return VStack(spacing: 20) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 60))
+                .foregroundStyle(Color.accent)
+            Text("Nothing this size left.")
+                .font(.system(size: 28, weight: .bold, design: .serif))
+                .foregroundStyle(.white)
+            Text("\(hidden) smaller moment\(hidden == 1 ? "" : "s") \(hidden == 1 ? "is" : "are") still waiting,\nhidden by your minimum size.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
+            Button {
+                minSetSize = MinSetSize.all.rawValue
+                library.minSize = 1
+            } label: {
+                Text("Show everything")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(Color.accent, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(PressScaleStyle())
             Button { showSettings = true } label: {
                 Text("Adjust filters")
                     .font(.subheadline.weight(.medium))

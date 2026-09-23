@@ -27,11 +27,21 @@ final class LibraryService: ObservableObject {
         minSize <= 1 ? clusters : clusters.filter { $0.totalInWindow >= minSize }
     }
 
+    /// Photos still to review, within whatever the minimum-size filter is showing.
     var toReviewCount: Int { filtered.reduce(0) { $0 + $1.count } }
 
+    /// Moments still to review. Not the same number as `toReviewCount`, which counts
+    /// photos — the two were being used interchangeably, and the home screen said
+    /// "12,438 moments" when it meant photos.
+    var momentCount: Int { filtered.count }
+
+    /// Progress through the whole library, deliberately ignoring the minimum-size
+    /// filter. Hiding small sets from view is not the same as having reviewed them,
+    /// and counting it as progress would quietly inflate the number.
     var reviewedFraction: Double {
         guard totalAssets > 0 else { return 0 }
-        return Double(totalAssets - toReviewCount) / Double(totalAssets)
+        let remaining = clusters.reduce(0) { $0 + $1.count }
+        return Double(totalAssets - remaining) / Double(totalAssets)
     }
 
     /// Top-5 clusters ranked by engagement potential (size × GPS × nostalgia).
