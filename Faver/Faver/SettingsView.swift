@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var library: LibraryService
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmStartOver = false
 
     @AppStorage("clusterMode")      private var clusterModeRaw: String = ClusterMode.smart.rawValue
     @AppStorage("smartSensitivity") private var sensitivityRaw: String = SmartSensitivity.balanced.rawValue
@@ -77,25 +76,6 @@ struct SettingsView: View {
                     Text(current.description)
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section {
-                    Button("Start over", role: .destructive) { confirmStartOver = true }
-                } header: {
-                    Text("Progress")
-                } footer: {
-                    Text("Puts every moment back in the queue. Your favourites are not touched, and no photo is ever deleted.")
-                }
-            }
-            .confirmationDialog(
-                "Put every moment back in the queue?",
-                isPresented: $confirmStartOver,
-                titleVisibility: .visible
-            ) {
-                Button("Start over", role: .destructive) {
-                    library.startOver()
-                    dismiss()
-                }
-            } message: {
-                Text("Faver forgets what it has shown you. Favourites stay exactly as they are.")
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)

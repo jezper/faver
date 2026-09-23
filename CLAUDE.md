@@ -21,8 +21,12 @@ without pressure.
   position and are swiped vertically. Seeing a burst marks all of it.
 - Videos show a poster frame, their length and a play control. Never autoplay.
 - Favorite button toggles instantly, no confirmation dialog, no auto-advance
-- Leaving is free and never confirmed: every photo is recorded as seen when it is
-  the one on screen, so the next visit resumes on the photo the user stopped at
+- **A moment is whole.** Nothing counts as reviewed until the explicit last step at
+  the end marks the whole moment at once. Swiping past a photo spends nothing.
+- What is remembered while swiping is the **position**, per moment, so the next visit
+  opens on the photo the user stopped at. Leaving is free and never confirmed.
+- Finished moments go to an archive in Browse and can be walked back into, or put back
+  in the queue. There is no global reset.
 - Progress indicator shows overall library completion — should feel like momentum, not pressure
 - Screenshots are excluded by default, with a setting to include them
 
@@ -77,9 +81,13 @@ crossing the boundary.
 After a review session ends, `onDismiss: { library.load() }` re-clusters so reviewed
 photos disappear.
 
-`ReviewStore` persists the ids of photos already seen, in UserDefaults. `reset()`
-backs the Start over action in Settings; it clears progress only and never touches
-the photo library.
+`ReviewStore` holds two separate things: `reviewedIDs`, the photos in moments that have
+been through the last step, and `positions`, a moment id → asset id map of where the user
+stopped. Keeping them apart is what lets a moment stay whole while still resuming
+correctly. `unmark(_:)` puts photos back.
+
+`PhotoCluster.isReviewed` means `assetsToReview` is empty. `LibraryService.pending` is
+the queue, `archive` is everything finished; `clusters` holds both.
 
 `LibraryService` observes the photo library, but only sets a flag. The reload happens
 when the app returns to the foreground, because Faver's own favorite writes are library

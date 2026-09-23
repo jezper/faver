@@ -1,23 +1,39 @@
 import Photos
 import SwiftUI
 
-/// Sheet showing every unreviewed moment, grouped by year → month.
-/// Tap a row to dismiss the sheet and open that moment in ReviewView.
+/// Sheet showing moments grouped by year → month, in two lists: the queue, and the
+/// archive of moments already been through.
+///
+/// The archive exists because a finished moment used to vanish completely, and the only
+/// way back was resetting every moment ever reviewed. Nobody would want that. Being able
+/// to walk back into one moment and change your mind is the useful version.
 struct BrowseView: View {
     let library: LibraryService
-    let onSelect: (PhotoCluster) -> Void
+    let onSelect: (PhotoCluster, Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showingArchive = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
+                if !library.archive.isEmpty {
+                    Picker("", selection: $showingArchive) {
+                        Text("To review").tag(false)
+                        Text("Reviewed").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                }
+
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                     // One Section per month — direct children of LazyVStack so their
                     // headers are pinned. Year is embedded in the header, not a separate
                     // outer section, which is why month pinning now works correctly.
-                    ForEach(library.yearSections()) { yearSummary in
-                        ForEach(library.monthSections(for: yearSummary.year)) { month in
+                    ForEach(library.yearSections(archived: showingArchive)) { yearSummary in
+                        ForEach(library.monthSections(for: yearSummary.year, archived: showingArchive)) { month in
                             Section {
                                 rows(for: month)
                             } header: {
@@ -26,8 +42,11 @@ struct BrowseView: View {
                         }
                     }
                 }
-                .padding(.bottom, 40)
+                if showingArchive && library.archive.isEmpty {
+                    emptyArchive
+                }
             }
+            .padding(.bottom, 40)
             .background(Color.bg)
             .navigationTitle("All Moments")
             .navigationBarTitleDisplayMode(.large)
@@ -50,7 +69,7 @@ struct BrowseView: View {
     /// type-checker gives up on the whole expression.
     private func rows(for month: MonthSection) -> some View {
         ForEach(month.clusters) { cluster in
-            ClusterRow(cluster: cluster) { select(cluster) }
+            ClusterRow(cluster: cluster, archived: showingArchive) { select(cluster) }
             Divider()
                 .background(Color.surface2)
                 .padding(.leading, 84)
@@ -59,8 +78,22 @@ struct BrowseView: View {
 
     /// Hands the choice up and closes. The parent opens it once this sheet is gone.
     private func select(_ cluster: PhotoCluster) {
-        onSelect(cluster)
+        onSelect(cluster, showingArchive)
         dismiss()
+    }
+
+    private var emptyArchive: some View {
+        VStack(spacing: 10) {
+            Text("Nothing here yet.")
+                .font(.system(.title3, design: .serif).weight(.bold))
+                .foregroundStyle(.white)
+            Text("Moments you finish show up here,\nso you can always go back in.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, 60)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Section header
@@ -89,6 +122,7 @@ struct BrowseView: View {
 
 private struct ClusterRow: View {
     let cluster: PhotoCluster
+    var archived: Bool = false
     let action: () -> Void
 
     @State private var thumbnail: UIImage? = nil
@@ -102,7 +136,7 @@ private struct ClusterRow: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text("\(cluster.dateLabel) · \(cluster.count) photos")
+                    Text("\(cluster.dateLabel) · \(countLabel)")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -117,9 +151,14 @@ private struct ClusterRow: View {
         }
         .buttonStyle(PressScaleStyle(scale: 0.98))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(cluster.title), \(cluster.dateLabel), \(cluster.count) photos left to review")
-        .accessibilityHint("Opens this moment")
+        .accessibilityLabel("\(cluster.title), \(cluster.dateLabel), \(countLabel)")
+        .accessibilityHint(archived ? "Opens this moment again" : "Opens this moment")
         .task(id: cluster.id) { thumbnail = await loadThumbnail() }
+    }
+
+    private var countLabel: String {
+        let n = archived ? cluster.allAssets.count : cluster.count
+        return archived ? "\(n) photos" : "\(n) photo\(n == 1 ? "" : "s") left"
     }
 
     private var thumbnailView: some View {
@@ -138,7 +177,7 @@ private struct ClusterRow: View {
     }
 
     private func loadThumbnail() async -> UIImage? {
-        guard let asset = cluster.assetsToReview.first else { return nil }
+        guard let asset = (archived ? cluster.allAssets : cluster.assetsToReview).first else { return nil }
         return await withCheckedContinuation { continuation in
             let opts = PHImageRequestOptions()
             opts.deliveryMode = .fastFormat

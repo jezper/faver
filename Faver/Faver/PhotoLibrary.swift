@@ -36,8 +36,18 @@ final class LibraryService: NSObject, ObservableObject {
 
     // MARK: - Derived state
 
+    /// Moments still to go through. `clusters` also holds finished ones, for the archive.
+    var pending: [PhotoCluster] { clusters.filter { !$0.isReviewed } }
+
+    /// Moments already been through, newest first. Kept reachable so a decision can be
+    /// revisited; the alternative was a global reset, which nobody would ever want.
+    var archive: [PhotoCluster] {
+        clusters.filter(\.isReviewed)
+            .sorted { ($0.anchorDate ?? .distantPast) > ($1.anchorDate ?? .distantPast) }
+    }
+
     var filtered: [PhotoCluster] {
-        minSize <= 1 ? clusters : clusters.filter { $0.totalInWindow >= minSize }
+        minSize <= 1 ? pending : pending.filter { $0.totalInWindow >= minSize }
     }
 
     /// Photos still to review, within whatever the minimum-size filter is showing.
@@ -53,7 +63,7 @@ final class LibraryService: NSObject, ObservableObject {
     /// and counting it as progress would quietly inflate the number.
     var reviewedFraction: Double {
         guard totalAssets > 0 else { return 0 }
-        let remaining = clusters.reduce(0) { $0 + $1.count }
+        let remaining = pending.reduce(0) { $0 + $1.count }
         return Double(totalAssets - remaining) / Double(totalAssets)
     }
 
@@ -62,11 +72,14 @@ final class LibraryService: NSObject, ObservableObject {
         Array(filtered.sorted { rank($0) > rank($1) }.prefix(5))
     }
 
-    func yearSections() -> [YearSummary] { yearSummaries(from: filtered) }
+    func yearSections(archived: Bool = false) -> [YearSummary] {
+        yearSummaries(from: archived ? archive : filtered)
+    }
 
-    func monthSections(for year: Int) -> [MonthSection] {
+    func monthSections(for year: Int, archived: Bool = false) -> [MonthSection] {
         let cal = Calendar.current
-        let yearClusters = filtered.filter {
+        let source = archived ? archive : filtered
+        let yearClusters = source.filter {
             cal.component(.year, from: $0.anchorDate ?? Date()) == year
         }
         return groupByMonth(yearClusters)
@@ -130,7 +143,7 @@ final class LibraryService: NSObject, ObservableObject {
             // change, and after every single moment reviewed. On a large library that
             // is the price of finishing one moment, paid as a frozen screen, while the
             // spinner meant to reassure the user could not even turn.
-            let (total, built): (Int, [PhotoCluster]) = await Task.detached(priority: .userInitiated) {
+            let (total, result): (Int, ClusterResult) = await Task.detached(priority: .userInitiated) {
                 let options = PHFetchOptions()
                 options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
                 // Screenshots are the single biggest source of clutter in a camera roll
@@ -156,11 +169,29 @@ final class LibraryService: NSObject, ObservableObject {
                 }
             }.value
 
+            // Photos left stranded half-way through a moment by the builds that recorded
+            // progress photo by photo. Under the current rules a moment is marked whole or
+            // not at all, so a half-marked window can only be that. Give them back, once,
+            // and cluster again with them present.
+            if !hasReturnedStrandedPhotos {
+                hasReturnedStrandedPhotos = true
+                if !result.strandedIDs.isEmpty {
+                    ReviewStore.shared.unmark(result.strandedIDs)
+                    load()
+                    return
+                }
+            }
+
             totalAssets = total
-            clusters = built
+            clusters = result.clusters
             loadProgress = 1.0
             isLoading = false
         }
+    }
+
+    private var hasReturnedStrandedPhotos: Bool {
+        get { UserDefaults.standard.bool(forKey: "didReturnStrandedPhotos") }
+        set { UserDefaults.standard.set(newValue, forKey: "didReturnStrandedPhotos") }
     }
 
     // MARK: - Mutations
@@ -178,9 +209,10 @@ final class LibraryService: NSObject, ObservableObject {
         }
     }
 
-    /// Puts the queue back to full. See ReviewStore.reset().
-    func startOver() {
-        ReviewStore.shared.reset()
+    /// Puts one moment back in the queue, from the archive.
+    func reviewAgain(_ cluster: PhotoCluster) {
+        ReviewStore.shared.unmark(cluster.allAssets.map { $0.localIdentifier })
+        ReviewStore.shared.clearPosition(inMoment: cluster.id)
         load()
     }
 

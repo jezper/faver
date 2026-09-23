@@ -5,13 +5,37 @@ import SwiftUI
 /// Swipe freely through all photos; tap the heart to toggle each one.
 /// After the last photo, one more swipe reveals a completion page.
 ///
-/// Every photo is recorded as seen the moment it is the one on screen, so leaving is
-/// always free: the next visit rebuilds the moment out of what is left, which lands
-/// the user on exactly the photo they stopped at. Nothing needs to be confirmed on
-/// the way out, because nothing is lost by going.
+/// Swiping spends nothing. A moment is marked reviewed by the last step at the end of
+/// it, all at once, and never before — open one, look at two photos, leave, and it is
+/// exactly as it was. What is remembered instead is the position, so the next visit opens
+/// on the photo the user stopped at. Leaving therefore needs no confirmation: nothing is
+/// lost by going.
+///
+/// In `revisiting` mode the moment comes from the archive and shows every photo it has,
+/// not just what is left, so a decision can be looked at again.
 struct ReviewView: View {
     let library: LibraryService
     let cluster: PhotoCluster
+    let revisiting: Bool
+
+    /// The pager's positions. Built once, here, rather than recomputed on every render.
+    private let units: [ReviewUnit]
+
+    init(library: LibraryService, cluster: PhotoCluster, revisiting: Bool = false) {
+        self.library = library
+        self.cluster = cluster
+        self.revisiting = revisiting
+        let units = revisiting ? groupIntoUnits(cluster.allAssets) : cluster.units
+        self.units = units
+
+        // Opening straight onto the remembered photo, rather than jumping there after the
+        // first frame has already drawn the wrong one.
+        let saved = ReviewStore.shared.position(inMoment: cluster.id)
+        let start = saved.flatMap { id in
+            units.firstIndex { $0.assets.contains { $0.localIdentifier == id } }
+        } ?? 0
+        _currentPage = State(initialValue: start)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,8 +47,8 @@ struct ReviewView: View {
 
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
-    private var isOnCompletionPage: Bool { currentPage == cluster.units.count }
-    private var currentUnit: ReviewUnit? { cluster.units[safe: currentPage] }
+    private var isOnCompletionPage: Bool { currentPage == units.count }
+    private var currentUnit: ReviewUnit? { units[safe: currentPage] }
 
     /// The photo the favorite button acts on: the one showing inside the current burst,
     /// or the only one if this position is a single photo.
@@ -46,13 +70,13 @@ struct ReviewView: View {
 
             // Photo pager + completion page
             TabView(selection: $currentPage) {
-                ForEach(Array(cluster.units.enumerated()), id: \.element.id) { i, unit in
+                ForEach(Array(units.enumerated()), id: \.element.id) { i, unit in
                     unitPage(unit)
                         .tag(i)
                         .ignoresSafeArea()
                 }
                 completionPage
-                    .tag(cluster.units.count)
+                    .tag(units.count)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
@@ -97,12 +121,11 @@ struct ReviewView: View {
                 .filter { $0.isFavorite }
                 .map { $0.localIdentifier }
             favoritedIDs = Set(ids)
-            markCurrentSeen()
         }
-        // Recorded per page rather than in the pager's ForEach: the paging TabView
-        // builds the neighbouring pages before they are ever shown, so marking on
-        // their appearance would count photos the user never actually looked at.
-        .onChange(of: currentPage) { _, _ in markCurrentSeen() }
+        // Remembering where the user is, not spending anything. Recorded here rather than
+        // in the pager's ForEach because the paging TabView builds the neighbouring pages
+        // before they are ever shown.
+        .onChange(of: currentPage) { _, page in rememberPosition(page) }
     }
 
     // MARK: - One position in the pager
@@ -189,7 +212,7 @@ struct ReviewView: View {
 
                 Spacer()
 
-                let total = cluster.units.count
+                let total = units.count
                 if total > 1 {
                     Text("\(min(currentPage + 1, total)) / \(total)")
                         .font(.footnote.weight(.semibold))
@@ -272,12 +295,12 @@ struct ReviewView: View {
 
                 VStack(spacing: 20) {
                     // Icon reflects whether any photos were favorited
-                    Image(systemName: favoritedIDs.isEmpty ? "checkmark.circle" : "heart.fill")
+                    Image(systemName: revisiting ? "clock.arrow.circlepath" : (favoritedIDs.isEmpty ? "checkmark.circle" : "heart.fill"))
                         .font(.system(size: 56))
                         .foregroundStyle(Color.accent)
 
                     VStack(spacing: 10) {
-                        Text("You've been through them all.")
+                        Text(revisiting ? "That's the whole moment." : "You've been through them all.")
                             .font(.system(.title, design: .serif).weight(.bold))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -300,10 +323,9 @@ struct ReviewView: View {
 
                 VStack(spacing: 12) {
                     Button {
-                        cluster.assetsToReview.forEach { library.markSeen($0) }
-                        dismiss()
+                        if revisiting { dismiss() } else { markMomentReviewed(); dismiss() }
                     } label: {
-                        Text("Mark as reviewed")
+                        Text(revisiting ? "Done" : "Mark as reviewed")
                             .font(.headline)
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
@@ -312,8 +334,14 @@ struct ReviewView: View {
                     }
                     .buttonStyle(PressScaleStyle())
 
-                    Button { dismiss() } label: {
-                        Text("Come back to this")
+                    Button {
+                        if revisiting { library.reviewAgain(cluster) }
+                        dismiss()
+                    } label: {
+                        // From the archive this is the way back into the queue, so the
+                        // moment turns up on its own again rather than only when the user
+                        // remembers to go looking for it.
+                        Text(revisiting ? "Put back in the queue" : "Come back to this")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white.opacity(0.6))
                             .padding(.vertical, 12)
@@ -328,12 +356,15 @@ struct ReviewView: View {
 
     // MARK: - Actions
 
-    /// Marks the whole burst, not just the photo showing. A burst is presented as one
-    /// thing to decide about; treating it as seen only where the user happened to stop
-    /// would bring it back next time one photo shorter, over and over.
-    private func markCurrentSeen() {
-        guard let unit = currentUnit else { return }
-        unit.assets.forEach { library.markSeen($0) }
+    private func rememberPosition(_ page: Int) {
+        guard !revisiting, let unit = units[safe: page], let first = unit.assets.first else { return }
+        ReviewStore.shared.setPosition(first.localIdentifier, inMoment: cluster.id)
+    }
+
+    /// The one place a moment becomes reviewed. All of it, at once, on purpose.
+    private func markMomentReviewed() {
+        cluster.assetsToReview.forEach { library.markSeen($0) }
+        ReviewStore.shared.clearPosition(inMoment: cluster.id)
     }
 
     private func toggleFavorite() {
