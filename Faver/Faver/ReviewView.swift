@@ -18,11 +18,24 @@ struct ReviewView: View {
     @State private var currentPage: Int = 0
     @State private var favoritedIDs: Set<String> = []
     @State private var failureNotice: String? = nil
+    /// Which photo is showing inside each burst, keyed by the burst's id.
+    @State private var burstPosition: [String: String] = [:]
 
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
-    private var isOnCompletionPage: Bool { currentPage == cluster.assetsToReview.count }
-    private var currentAsset: PHAsset? { cluster.assetsToReview[safe: currentPage] }
+    private var isOnCompletionPage: Bool { currentPage == cluster.units.count }
+    private var currentUnit: ReviewUnit? { cluster.units[safe: currentPage] }
+
+    /// The photo the favorite button acts on: the one showing inside the current burst,
+    /// or the only one if this position is a single photo.
+    private var currentAsset: PHAsset? {
+        guard let unit = currentUnit else { return nil }
+        if let id = burstPosition[unit.id],
+           let asset = unit.assets.first(where: { $0.localIdentifier == id }) {
+            return asset
+        }
+        return unit.assets.first
+    }
     private var isCurrentFavorited: Bool {
         favoritedIDs.contains(currentAsset?.localIdentifier ?? "")
     }
@@ -33,19 +46,13 @@ struct ReviewView: View {
 
             // Photo pager + completion page
             TabView(selection: $currentPage) {
-                ForEach(Array(cluster.assetsToReview.enumerated()), id: \.element.localIdentifier) { i, asset in
-                    Group {
-                        if asset.mediaType == .video {
-                            VideoReviewView(asset: asset)
-                        } else {
-                            ZoomableImageView(asset: asset)
-                        }
-                    }
-                    .tag(i)
-                    .ignoresSafeArea()
+                ForEach(Array(cluster.units.enumerated()), id: \.element.id) { i, unit in
+                    unitPage(unit)
+                        .tag(i)
+                        .ignoresSafeArea()
                 }
                 completionPage
-                    .tag(cluster.assetsToReview.count)
+                    .tag(cluster.units.count)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
@@ -98,6 +105,73 @@ struct ReviewView: View {
         .onChange(of: currentPage) { _, _ in markCurrentSeen() }
     }
 
+    // MARK: - One position in the pager
+
+    @ViewBuilder
+    private func unitPage(_ unit: ReviewUnit) -> some View {
+        if unit.isBurst {
+            ZStack(alignment: .trailing) {
+                // A vertical paging ScrollView rather than a rotated TabView. SwiftUI's
+                // page style only runs horizontally, and the rotation trick breaks the
+                // zoom gesture inside each photo.
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(unit.assets, id: \.localIdentifier) { asset in
+                            media(for: asset)
+                                .containerRelativeFrame([.horizontal, .vertical])
+                                .id(asset.localIdentifier)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollIndicators(.hidden)
+                .scrollPosition(id: burstBinding(for: unit))
+
+                burstRail(unit)
+            }
+        } else if let asset = unit.assets.first {
+            media(for: asset)
+        }
+    }
+
+    @ViewBuilder
+    private func media(for asset: PHAsset) -> some View {
+        if asset.mediaType == .video {
+            VideoReviewView(asset: asset)
+        } else {
+            ZoomableImageView(asset: asset)
+        }
+    }
+
+    /// A column of marks down the trailing edge. It says, without a word of instruction,
+    /// that this position holds more than one photo and that they are stacked vertically.
+    private func burstRail(_ unit: ReviewUnit) -> some View {
+        let currentID = burstPosition[unit.id] ?? unit.assets.first?.localIdentifier
+        return VStack(spacing: 5) {
+            ForEach(unit.assets, id: \.localIdentifier) { asset in
+                let isCurrent = asset.localIdentifier == currentID
+                Capsule()
+                    .fill(isCurrent ? Color.white : Color.white.opacity(0.4))
+                    .frame(width: 3, height: isCurrent ? 16 : 6)
+                    .animation(.calm(reduceMotion: reduceMotion), value: currentID)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .glassEffect(.regular, in: Capsule())
+        .padding(.trailing, 14)
+        .accessibilityElement()
+        .accessibilityLabel("\(unit.assets.count) photos taken together. Swipe up and down to see them.")
+    }
+
+    private func burstBinding(for unit: ReviewUnit) -> Binding<String?> {
+        Binding(
+            get: { burstPosition[unit.id] ?? unit.assets.first?.localIdentifier },
+            set: { burstPosition[unit.id] = $0 ?? unit.assets.first?.localIdentifier }
+        )
+    }
+
     // MARK: - Top bar
 
     private var topBar: some View {
@@ -115,15 +189,15 @@ struct ReviewView: View {
 
                 Spacer()
 
-                let total = cluster.assetsToReview.count
+                let total = cluster.units.count
                 if total > 1 {
-                    Text("\(currentPage + 1) / \(total)")
+                    Text("\(min(currentPage + 1, total)) / \(total)")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .glassEffect(.regular, in: Capsule())
-                        .accessibilityLabel("Photo \(currentPage + 1) of \(total)")
+                        .accessibilityLabel("Item \(min(currentPage + 1, total)) of \(total)")
                 }
             }
         }
@@ -254,9 +328,12 @@ struct ReviewView: View {
 
     // MARK: - Actions
 
+    /// Marks the whole burst, not just the photo showing. A burst is presented as one
+    /// thing to decide about; treating it as seen only where the user happened to stop
+    /// would bring it back next time one photo shorter, over and over.
     private func markCurrentSeen() {
-        guard let asset = currentAsset else { return }
-        library.markSeen(asset)
+        guard let unit = currentUnit else { return }
+        unit.assets.forEach { library.markSeen($0) }
     }
 
     private func toggleFavorite() {

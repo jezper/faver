@@ -40,6 +40,9 @@ nonisolated enum ClusterGap: String, CaseIterable {
 nonisolated struct PhotoCluster: Identifiable, @unchecked Sendable {
     let id: String
     let assetsToReview: [PHAsset]
+    /// `assetsToReview` folded into burst sets. Computed once when the cluster is built,
+    /// off the main actor, rather than on every render of the review screen.
+    let units: [ReviewUnit]
     let totalInWindow: Int
     let anchorDate: Date?
     let firstLocationAsset: PHAsset?
@@ -77,6 +80,65 @@ nonisolated struct PhotoCluster: Identifiable, @unchecked Sendable {
         case 17..<21: return "evening"
         default:      return "night"
         }
+    }
+}
+
+// MARK: - ReviewUnit
+
+/// One position in the review pager: a single photo, or a burst of photos taken within
+/// a few seconds of each other.
+///
+/// Twelve near-identical shots of the same thing used to cost twelve swipes and twelve
+/// full-size image loads, which is exactly where reviewing stops feeling like looking at
+/// your life and starts feeling like a chore. A burst is one thing to decide about, so
+/// it occupies one horizontal position and opens downwards.
+nonisolated struct ReviewUnit: Identifiable, @unchecked Sendable {
+    let id: String
+    let assets: [PHAsset]
+
+    var isBurst: Bool { assets.count > 1 }
+}
+
+/// Photos belong to the same burst when the camera says so, or when they were taken
+/// within `window` of each other. The camera's own burst identifier only covers real
+/// burst mode; the time rule catches the far more common case of pressing the shutter
+/// four times in a row because the first one might be blurry.
+nonisolated func groupIntoUnits(_ assets: [PHAsset], window: TimeInterval = 3) -> [ReviewUnit] {
+    guard !assets.isEmpty else { return [] }
+
+    var units: [[PHAsset]] = []
+    var current: [PHAsset] = [assets[0]]
+
+    for i in 1..<assets.count {
+        let prev = assets[i - 1]
+        let curr = assets[i]
+
+        let sameCameraBurst: Bool = {
+            guard let a = prev.burstIdentifier, let b = curr.burstIdentifier else { return false }
+            return a == b
+        }()
+
+        let closeInTime: Bool = {
+            guard let a = prev.creationDate, let b = curr.creationDate else { return false }
+            return b.timeIntervalSince(a) <= window
+        }()
+
+        // A video is always its own item. Grouping one with the stills around it would
+        // hide it behind a photo, and it takes its own kind of attention to judge.
+        let groupable = prev.mediaType == .image && curr.mediaType == .image
+
+        if groupable && (sameCameraBurst || closeInTime) {
+            current.append(curr)
+        } else {
+            units.append(current)
+            current = [curr]
+        }
+    }
+    units.append(current)
+
+    return units.compactMap { group in
+        guard let first = group.first else { return nil }
+        return ReviewUnit(id: first.localIdentifier, assets: group)
     }
 }
 
@@ -204,6 +266,7 @@ nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<Str
     return PhotoCluster(
         id: group.first?.localIdentifier ?? UUID().uuidString,
         assetsToReview: toReview,
+        units: groupIntoUnits(toReview),
         totalInWindow: group.count,
         anchorDate: group.first?.creationDate,
         firstLocationAsset: group.first(where: { $0.location != nil })
