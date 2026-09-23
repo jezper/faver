@@ -5,10 +5,11 @@ import SwiftUI
 /// Swipe freely through all photos; tap the heart to toggle each one.
 /// After the last photo, one more swipe reveals a completion page.
 ///
-/// Every photo is recorded as seen the moment it is the one on screen, so leaving is
-/// always free: the next visit rebuilds the moment out of what is left, which lands
-/// the user on exactly the photo they stopped at. Nothing needs to be confirmed on
-/// the way out, because nothing is lost by going.
+/// A photo is recorded as seen when the user moves on from it, never when they arrive.
+/// Leaving is therefore always free: the next visit rebuilds the moment out of what is
+/// left, which lands the user on exactly the photo they stopped at, and opening a moment
+/// and immediately backing out costs nothing at all. Nothing needs to be confirmed on the
+/// way out, because nothing is lost by going.
 struct ReviewView: View {
     let library: LibraryService
     let cluster: PhotoCluster
@@ -97,12 +98,15 @@ struct ReviewView: View {
                 .filter { $0.isFavorite }
                 .map { $0.localIdentifier }
             favoritedIDs = Set(ids)
-            markCurrentSeen()
         }
-        // Recorded per page rather than in the pager's ForEach: the paging TabView
-        // builds the neighbouring pages before they are ever shown, so marking on
-        // their appearance would count photos the user never actually looked at.
-        .onChange(of: currentPage) { _, _ in markCurrentSeen() }
+        // The page being left, not the page being arrived at. Marking on arrival meant
+        // opening a moment and pressing Done without looking at anything still consumed
+        // the first photo, which then vanished from the moment's card on the home screen.
+        //
+        // Recorded here rather than in the pager's ForEach: the paging TabView builds the
+        // neighbouring pages before they are ever shown, so marking on their appearance
+        // would count photos the user never looked at at all.
+        .onChange(of: currentPage) { previous, _ in markSeen(atPage: previous) }
     }
 
     // MARK: - One position in the pager
@@ -331,8 +335,8 @@ struct ReviewView: View {
     /// Marks the whole burst, not just the photo showing. A burst is presented as one
     /// thing to decide about; treating it as seen only where the user happened to stop
     /// would bring it back next time one photo shorter, over and over.
-    private func markCurrentSeen() {
-        guard let unit = currentUnit else { return }
+    private func markSeen(atPage page: Int) {
+        guard let unit = cluster.units[safe: page] else { return }
         unit.assets.forEach { library.markSeen($0) }
     }
 
