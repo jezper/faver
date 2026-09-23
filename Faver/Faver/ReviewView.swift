@@ -29,10 +29,11 @@ struct ReviewView: View {
         self.units = units
 
         // Opening straight onto the remembered photo, rather than jumping there after the
-        // first frame has already drawn the wrong one.
-        let saved = ReviewStore.shared.position(inMoment: cluster.id)
-        let start = saved.flatMap { id in
-            units.firstIndex { $0.assets.contains { $0.localIdentifier == id } }
+        // first frame has already drawn the wrong one. Found by looking for the marked
+        // photo among these units, so it still works when the grouping settings have been
+        // changed since and this is not the same moment it was.
+        let start = units.firstIndex { unit in
+            unit.assets.contains { ReviewStore.shared.isStop($0.localIdentifier) }
         } ?? 0
         _currentPage = State(initialValue: start)
     }
@@ -356,15 +357,17 @@ struct ReviewView: View {
 
     // MARK: - Actions
 
+    private var momentAssetIDs: [String] { cluster.allAssets.map(\.localIdentifier) }
+
     private func rememberPosition(_ page: Int) {
         guard !revisiting, let unit = units[safe: page], let first = unit.assets.first else { return }
-        ReviewStore.shared.setPosition(first.localIdentifier, inMoment: cluster.id)
+        ReviewStore.shared.setStop(first.localIdentifier, within: momentAssetIDs)
     }
 
     /// The one place a moment becomes reviewed. All of it, at once, on purpose.
     private func markMomentReviewed() {
         cluster.assetsToReview.forEach { library.markSeen($0) }
-        ReviewStore.shared.clearPosition(inMoment: cluster.id)
+        ReviewStore.shared.clearStops(within: momentAssetIDs)
     }
 
     private func toggleFavorite() {

@@ -82,9 +82,15 @@ After a review session ends, `onDismiss: { library.load() }` re-clusters so revi
 photos disappear.
 
 `ReviewStore` holds two separate things: `reviewedIDs`, the photos in moments that have
-been through the last step, and `positions`, a moment id → asset id map of where the user
-stopped. Keeping them apart is what lets a moment stay whole while still resuming
-correctly. `unmark(_:)` puts photos back.
+been through the last step, and `stoppedAtIDs`, the photos the user was on when they last
+left. Keeping them apart is what lets a moment stay whole while still resuming correctly.
+`unmark(_:)` puts photos back.
+
+**Both are keyed to photo ids, never to moment ids.** Moments are derived from the
+grouping settings on every load, so a moment's identity changes the moment someone moves
+the sensitivity slider. Anything keyed to `PhotoCluster.id` would silently point at
+nothing. Review state survives any settings change; moment grouping and the archive are
+redrawn, which Settings says out loud.
 
 `PhotoCluster.isReviewed` means `assetsToReview` is empty. `LibraryService.pending` is
 the queue, `archive` is everything finished; `clusters` holds both.

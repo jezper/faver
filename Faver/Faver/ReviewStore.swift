@@ -8,45 +8,56 @@ import Foundation
 /// last step at the end of one. Swiping past a photo does not spend it. This is what
 /// keeps a moment whole: open it, look at two photos, leave, and it is exactly as it was.
 ///
-/// **Position** is where the user stopped inside a moment, so the next visit opens there.
-/// Remembering that is what "pick up where you left off" needs, and it needs nothing else.
+/// **A stop** is the photo the user was on when they last left a moment, so the next
+/// visit opens there.
+///
+/// Both are recorded against photo ids, never against moment ids. Moments are not
+/// stored — they are worked out from the grouping settings every time the library
+/// loads — so a moment's identity changes the instant someone moves the sensitivity
+/// slider. Anything keyed to it would quietly point at nothing. Photo ids never move.
 class ReviewStore {
     static let shared = ReviewStore()
 
     private let key = "reviewedPhotoIDs"
-    private let positionsKey = "momentPositions"
+    private let stopsKey = "stoppedAtPhotoIDs"
 
     /// In-memory set, loaded once at init. Fast O(1) reads for the clustering pipeline.
     private(set) var reviewedIDs: Set<String>
-    /// Moment id → the id of the photo showing when the user last left it.
-    private var positions: [String: String]
+    /// Photos the user was looking at when they left the moment containing them.
+    private var stoppedAtIDs: Set<String>
 
     private init() {
         reviewedIDs = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-        positions = UserDefaults.standard.dictionary(forKey: positionsKey) as? [String: String] ?? [:]
+        stoppedAtIDs = Set(UserDefaults.standard.stringArray(forKey: stopsKey) ?? [])
     }
 
-    // MARK: - Position
+    // MARK: - Where the user stopped
 
-    func position(inMoment momentID: String) -> String? {
-        positions[momentID]
+    func isStop(_ assetID: String) -> Bool {
+        stoppedAtIDs.contains(assetID)
     }
 
-    func setPosition(_ assetID: String, inMoment momentID: String) {
-        guard positions[momentID] != assetID else { return }
-        positions[momentID] = assetID
-        persistPositions()
+    /// Moves the stop inside one moment. `within` is every photo of that moment, so the
+    /// previous stop is cleared however the moment happens to be grouped today.
+    func setStop(_ assetID: String, within momentAssetIDs: [String]) {
+        let others = Set(momentAssetIDs).subtracting([assetID])
+        guard !stoppedAtIDs.contains(assetID) || !stoppedAtIDs.isDisjoint(with: others) else { return }
+        stoppedAtIDs.subtract(others)
+        stoppedAtIDs.insert(assetID)
+        persistStops()
     }
 
-    func clearPosition(inMoment momentID: String) {
-        guard positions.removeValue(forKey: momentID) != nil else { return }
-        persistPositions()
+    func clearStops(within momentAssetIDs: [String]) {
+        let ids = Set(momentAssetIDs)
+        guard !stoppedAtIDs.isDisjoint(with: ids) else { return }
+        stoppedAtIDs.subtract(ids)
+        persistStops()
     }
 
-    private func persistPositions() {
-        let snapshot = positions
+    private func persistStops() {
+        let snapshot = stoppedAtIDs
         DispatchQueue.global(qos: .utility).async {
-            UserDefaults.standard.set(snapshot, forKey: self.positionsKey)
+            UserDefaults.standard.set(Array(snapshot), forKey: self.stopsKey)
         }
     }
 

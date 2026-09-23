@@ -18,7 +18,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Set grouping") {
+                Section {
                     Picker("Mode", selection: $clusterModeRaw) {
                         ForEach(ClusterMode.allCases, id: \.rawValue) { m in
                             Text(m.label).tag(m.rawValue)
@@ -45,6 +45,14 @@ struct SettingsView: View {
                         Text(gap.description)
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("Set grouping")
+                } footer: {
+                    // Worth saying out loud: moments are worked out from these settings
+                    // rather than stored, so changing one redraws all of them. The thing
+                    // people would actually worry about losing is safe, and saying so is
+                    // cheaper than letting them find out.
+                    Text("Changing this regroups every moment. What you have already reviewed stays reviewed — that is remembered per photo, not per moment.")
                 }
 
                 if library.hasLimitedAccess {

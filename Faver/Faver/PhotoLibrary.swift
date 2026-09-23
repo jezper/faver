@@ -212,7 +212,7 @@ final class LibraryService: NSObject, ObservableObject {
     /// Puts one moment back in the queue, from the archive.
     func reviewAgain(_ cluster: PhotoCluster) {
         ReviewStore.shared.unmark(cluster.allAssets.map { $0.localIdentifier })
-        ReviewStore.shared.clearPosition(inMoment: cluster.id)
+        ReviewStore.shared.clearStops(within: cluster.allAssets.map(\.localIdentifier))
         load()
     }
 
