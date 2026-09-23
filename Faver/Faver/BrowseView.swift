@@ -19,19 +19,7 @@ struct BrowseView: View {
                     ForEach(library.yearSections()) { yearSummary in
                         ForEach(library.monthSections(for: yearSummary.year)) { month in
                             Section {
-                                ForEach(month.clusters) { cluster in
-                                    ClusterRow(cluster: cluster) {
-                                        let c = cluster
-                                        dismiss()
-                                        Task { @MainActor in
-                                            try? await Task.sleep(nanoseconds: 350_000_000)
-                                            onSelect(c)
-                                        }
-                                    }
-                                    Divider()
-                                        .background(Color.surface2)
-                                        .padding(.leading, 84)
-                                }
+                                rows(for: month)
                             } header: {
                                 monthHeader(month.title, year: yearSummary.year)
                             }
@@ -43,8 +31,9 @@ struct BrowseView: View {
             .background(Color.bg)
             .navigationTitle("All Moments")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            // No toolbarBackground override. A flat fill was being painted over the
+            // system's glass bar, which is the one surface that resolves scrolling
+            // thumbnails behind a title well.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -55,6 +44,27 @@ struct BrowseView: View {
         .preferredColorScheme(.dark)
     }
 
+    // MARK: - Rows
+
+    /// Kept out of the body on purpose. Inlined inside the nested ForEach/Section the
+    /// type-checker gives up on the whole expression.
+    private func rows(for month: MonthSection) -> some View {
+        ForEach(month.clusters) { cluster in
+            ClusterRow(cluster: cluster) { select(cluster) }
+            Divider()
+                .background(Color.surface2)
+                .padding(.leading, 84)
+        }
+    }
+
+    private func select(_ cluster: PhotoCluster) {
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            onSelect(cluster)
+        }
+    }
+
     // MARK: - Section header
 
     /// Combined sticky header: year (small, subdued) above month (bold, all-caps).
@@ -63,7 +73,7 @@ struct BrowseView: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(String(year))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.28))
+                .foregroundStyle(.white.opacity(0.5))
             Text(title.uppercased())
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.accent.opacity(0.7))
@@ -91,22 +101,26 @@ private struct ClusterRow: View {
                 thumbnailView
                 VStack(alignment: .leading, spacing: 3) {
                     Text(cluster.title)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text("\(cluster.dateLabel) · \(cluster.count) photos")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
         }
         .buttonStyle(PressScaleStyle(scale: 0.98))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(cluster.title), \(cluster.dateLabel), \(cluster.count) photos left to review")
+        .accessibilityHint("Opens this moment")
         .task(id: cluster.id) { thumbnail = await loadThumbnail() }
     }
 

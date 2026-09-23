@@ -62,7 +62,11 @@ struct MapBrowseView: View {
                 .onMapCameraChange(frequency: .onEnd) { ctx in
                     currentRegion = ctx.region
                 }
-                .mapStyle(.hybrid(elevation: .realistic))
+                // Standard rather than realistic satellite. Satellite imagery is the
+                // busiest, most saturated surface there is, and the brief asks for calm
+                // and muted. On a plain map the amber pins become the only saturated
+                // thing on screen, which is where the eye should go.
+                .mapStyle(.standard)
                 .ignoresSafeArea(edges: .bottom)
 
                 if geoClusters.isEmpty {
@@ -71,7 +75,6 @@ struct MapBrowseView: View {
             }
             .navigationTitle("Places")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -201,25 +204,40 @@ private struct PinView: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            if pin.isLeaf {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.accent)
-                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 2)
-            } else {
-                ZStack {
-                    Circle()
-                        .fill(Color.accent)
-                        .frame(width: 38, height: 38)
+        // Glass rather than a flat amber disc. A solid fill over map terrain has the
+        // same contrast problem the review screen had over photos, and nobody had
+        // solved it here. Amber becomes a tint the material carries, not the whole pin.
+        GlassEffectContainer(spacing: 8) {
+            Button(action: onTap) {
+                if pin.isLeaf {
+                    Image(systemName: "mappin")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                } else {
                     Text("\(pin.photoCount)")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .padding(.horizontal, 6)
                 }
-                .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
             }
+            .glassEffect(.regular.tint(Color.accent).interactive(), in: Capsule())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint(pin.isLeaf ? "Opens this moment" : "Zooms in to show the moments here")
+    }
+
+    /// The badge is a bare number, which could be read as either places or photos.
+    /// Screen readers get the sentence the glyph cannot carry.
+    private var accessibilityText: String {
+        if pin.isLeaf {
+            let c = pin.clusters[0]
+            return "\(c.title), \(c.dateLabel), \(c.count) photos left to review"
+        }
+        let moments = pin.clusters.count
+        return "\(pin.photoCount) photos in \(moments) moments here"
     }
 }
 
