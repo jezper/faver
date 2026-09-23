@@ -67,7 +67,6 @@ struct SettingsView: View {
                         library.load()
                         dismiss()
                     }
-                    .foregroundStyle(Color.accent)
                 }
             }
         }

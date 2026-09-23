@@ -24,6 +24,7 @@ struct MapBrowseView: View {
     let onSelect: (PhotoCluster) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var position: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 20, longitude: 10),
@@ -112,11 +113,11 @@ struct MapBrowseView: View {
                 .font(.system(size: 44))
                 .foregroundStyle(.white.opacity(0.3))
             Text("No location data")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.7))
             Text("Your unreviewed moments don't\nhave location information.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
         }
         .padding(36)
@@ -126,7 +127,9 @@ struct MapBrowseView: View {
     // MARK: - Zoom
 
     private func zoomIn(to pin: MapSuperCluster) {
-        withAnimation(.easeInOut(duration: 0.4)) {
+        // A map that flies 4x closer is exactly the kind of movement reduced motion
+        // exists to stop. The zoom still happens, it just arrives instead of travelling.
+        withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeInOut(duration: 0.4)) {
             let newSpan = MKCoordinateSpan(
                 latitudeDelta: max(currentRegion.span.latitudeDelta / 4, 0.005),
                 longitudeDelta: max(currentRegion.span.longitudeDelta / 4, 0.005)
@@ -266,7 +269,7 @@ private struct MapClusterSheet: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(cluster.title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(.white)
                     HStack(spacing: 4) {
                         Text(cluster.dateLabel)
@@ -275,10 +278,10 @@ private struct MapClusterSheet: View {
                         }
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.6))
                     Text("\(cluster.count) photo\(cluster.count == 1 ? "" : "s") to review")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
                 Spacer()
             }
@@ -288,10 +291,10 @@ private struct MapClusterSheet: View {
                     Image(systemName: "heart.fill")
                     Text("Review this moment")
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
                 .background(Color.accent, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(PressScaleStyle())

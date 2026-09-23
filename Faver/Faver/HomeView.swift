@@ -14,6 +14,14 @@ struct HomeView: View {
     @AppStorage("homeCardSort") private var sortRaw: String = "oldest"
     @AppStorage("minSetSize")   private var minSetSize: Int = 1
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // The wordmark is display type, not body copy, so it keeps its drawn size rather
+    // than dropping to a text style. ScaledMetric still grows it with the system
+    // setting, which a plain .system(size:) would have ignored entirely.
+    @ScaledMetric(relativeTo: .largeTitle) private var onboardingWordmark: CGFloat = 56
+    @ScaledMetric(relativeTo: .largeTitle) private var loadingWordmark: CGFloat = 48
+
     private enum HomeCardSort: String { case oldest, latest }
     private var cardSort: HomeCardSort { HomeCardSort(rawValue: sortRaw) ?? .oldest }
 
@@ -134,7 +142,7 @@ struct HomeView: View {
             Spacer(minLength: 8)
             Button { showSettings = true } label: {
                 Image(systemName: "gear")
-                    .font(.system(size: 18))
+                    .font(.title3)
                     .foregroundStyle(.white.opacity(0.65))
                     .frame(width: 44, height: 44)
             }
@@ -174,8 +182,8 @@ struct HomeView: View {
                 Text(cardSort == .oldest ? "Oldest first" : "Latest first")
                     .font(.caption.weight(.medium))
             }
-            .foregroundStyle(.white.opacity(0.35))
-            .frame(height: 36)
+            .foregroundStyle(.white.opacity(0.55))
+            .frame(height: 44)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -209,10 +217,13 @@ struct HomeView: View {
                         Capsule()
                             .fill(i == currentIndex ? Color.accent : Color.white.opacity(0.25))
                             .frame(width: i == currentIndex ? 18 : 6, height: 6)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentIndex)
+                            .animation(.calm(reduceMotion: reduceMotion), value: currentIndex)
                     }
                 }
                 .padding(.bottom, 4)
+                // The carousel itself announces which card is showing; repeating it
+                // as five unlabelled dots adds nothing but noise.
+                .accessibilityHidden(true)
             }
 
             // Browse by location — full-width row, only shown when geo data exists
@@ -221,9 +232,9 @@ struct HomeView: View {
                 Button { showMap = true } label: {
                     HStack {
                         Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                         Text("Browse by location")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
@@ -270,7 +281,7 @@ struct HomeView: View {
     private var loadingView: some View {
         VStack(spacing: 24) {
             Text("Faver")
-                .font(.system(size: 48, weight: .bold, design: .serif))
+                .font(.system(size: loadingWordmark, weight: .bold, design: .serif))
                 .foregroundStyle(.white)
             VStack(spacing: 6) {
                 Text("Finding your moments…")
@@ -278,7 +289,7 @@ struct HomeView: View {
                     .foregroundStyle(.white.opacity(0.5))
                 Text("Do yourself a favor.")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.28))
+                    .foregroundStyle(.white.opacity(0.5))
             }
             ProgressView()
                 .tint(Color.accent)
@@ -294,7 +305,7 @@ struct HomeView: View {
             VStack(spacing: 28) {
                 VStack(spacing: 12) {
                     Text("Faver")
-                        .font(.system(size: 56, weight: .bold, design: .serif))
+                        .font(.system(size: onboardingWordmark, weight: .bold, design: .serif))
                         .foregroundStyle(.white)
                     Text("Do yourself a favor.")
                         .font(.title3.weight(.medium))
@@ -309,7 +320,7 @@ struct HomeView: View {
                     Task { await library.requestAccess() }
                 } label: {
                     Text("Find my moments")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.headline)
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
@@ -331,7 +342,7 @@ struct HomeView: View {
                 .font(.system(size: 52))
                 .foregroundStyle(.white.opacity(0.35))
             Text("Photo access needed")
-                .font(.system(size: 22, weight: .bold, design: .serif))
+                .font(.system(.title2, design: .serif).weight(.bold))
                 .foregroundStyle(.white)
             Text("Enable access in Settings to use Faver.")
                 .font(.subheadline)
@@ -343,7 +354,7 @@ struct HomeView: View {
                 }
             } label: {
                 Text("Open Settings")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 14)
@@ -362,7 +373,7 @@ struct HomeView: View {
                 .font(.system(size: 68))
                 .foregroundStyle(Color.accent)
             Text("All caught up.")
-                .font(.system(size: 28, weight: .bold, design: .serif))
+                .font(.system(.title, design: .serif).weight(.bold))
                 .foregroundStyle(.white)
             Text("You've reviewed every moment\nin your library.")
                 .font(.subheadline)
@@ -386,7 +397,7 @@ struct HomeView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(Color.accent)
             Text("Nothing this size left.")
-                .font(.system(size: 28, weight: .bold, design: .serif))
+                .font(.system(.title, design: .serif).weight(.bold))
                 .foregroundStyle(.white)
             Text("\(hidden) smaller moment\(hidden == 1 ? "" : "s") \(hidden == 1 ? "is" : "are") still waiting,\nhidden by your minimum size.")
                 .font(.subheadline)
@@ -397,7 +408,7 @@ struct HomeView: View {
                 library.minSize = 1
             } label: {
                 Text("Show everything")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 14)
@@ -443,7 +454,7 @@ private struct MomentCard: View {
                 // Content overlay: title + metadata + embedded CTA
                 VStack(alignment: .leading, spacing: 6) {
                     Text(cluster.title)
-                        .font(.system(size: 22, weight: .bold, design: .serif))
+                        .font(.system(.title2, design: .serif).weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
 
@@ -466,13 +477,13 @@ private struct MomentCard: View {
                         Text("Review this moment")
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                     }
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                    .frame(minHeight: 46)
                     .background(Color.accent, in: RoundedRectangle(cornerRadius: 12))
                     .padding(.top, 8)
                 }
@@ -483,10 +494,24 @@ private struct MomentCard: View {
         }
         .buttonStyle(PressScaleStyle())
         .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 10)
+        // The card is the primary action on the home screen and had no label at all,
+        // so a screen reader announced the title, the date, the count and the button
+        // text as four separate stops with no sense that they were one thing.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint("Opens this moment for review")
+        .accessibilityAddTraits(.isButton)
         .task(id: cluster.id) {
             await loadThumbnails()
             locationName = await GeocodingCache.shared.lookup(cluster.firstLocationAsset?.location)
         }
+    }
+
+    private var accessibilityText: String {
+        var parts = [cluster.title, cluster.dateLabel]
+        if let place = locationName { parts.append(place) }
+        parts.append("\(cluster.count) photo\(cluster.count == 1 ? "" : "s") to review")
+        return parts.joined(separator: ", ")
     }
 
     // MARK: Collage

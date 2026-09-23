@@ -14,6 +14,7 @@ struct ReviewView: View {
     let cluster: PhotoCluster
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage: Int = 0
     @State private var favoritedIDs: Set<String> = []
 
@@ -129,7 +130,7 @@ struct ReviewView: View {
                 Image(systemName: isCurrentFavorited ? "heart.fill" : "heart")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isCurrentFavorited)
+                    .animation(.calm(reduceMotion: reduceMotion), value: isCurrentFavorited)
                     .frame(width: 64, height: 64)
             }
             .glassEffect(
@@ -174,7 +175,7 @@ struct ReviewView: View {
 
                     VStack(spacing: 10) {
                         Text("You've been through them all.")
-                            .font(.system(size: 26, weight: .bold, design: .serif))
+                            .font(.system(.title, design: .serif).weight(.bold))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
 
@@ -187,7 +188,7 @@ struct ReviewView: View {
                             }
                         }
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
                     }
                 }
@@ -200,10 +201,10 @@ struct ReviewView: View {
                         dismiss()
                     } label: {
                         Text("Mark as reviewed")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.headline)
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
+                            .frame(minHeight: 56)
                             .background(Color.accent, in: RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(PressScaleStyle())
@@ -211,7 +212,7 @@ struct ReviewView: View {
                     Button { dismiss() } label: {
                         Text("Come back to this")
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(.white.opacity(0.6))
                             .padding(.vertical, 12)
                     }
                 }
