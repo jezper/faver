@@ -48,6 +48,16 @@ struct SettingsView: View {
                     }
                 }
 
+                if library.hasLimitedAccess {
+                    Section {
+                        Button("Choose photos") { library.presentLimitedPicker() }
+                    } header: {
+                        Text("Photo access")
+                    } footer: {
+                        Text("Faver can only see the photos you picked. Everything else in your library stays invisible to it.")
+                    }
+                }
+
                 Section("What to include") {
                     Toggle("Screenshots", isOn: $includeScreenshots)
                     Text(includeScreenshots

@@ -18,6 +18,7 @@ struct HomeView: View {
     @AppStorage("minSetSize")   private var minSetSize: Int = 1
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     // The wordmark is display type, not body copy, so it keeps its drawn size rather
     // than dropping to a text style. ScaledMetric still grows it with the system
@@ -55,6 +56,9 @@ struct HomeView: View {
         #if DEBUG
         .task(id: "iconExport") { AppIconExporter.exportIfNeeded() }
         #endif
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { library.reloadIfNeeded() }
+        }
         .onChange(of: library.clusters.count) {
             if currentIndex >= homeClusters.count {
                 scrollIndex = max(0, homeClusters.count - 1)
@@ -131,6 +135,12 @@ struct HomeView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 10)
 
+            if library.hasLimitedAccess {
+                limitedAccessRow
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+            }
+
             sortRow
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -177,6 +187,30 @@ struct HomeView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(pct) percent through your library")
+    }
+
+    /// Faver treated limited access exactly like full access, so the promise of a
+    /// complete pass over the library silently applied to a handful of photos.
+    private var limitedAccessRow: some View {
+        Button { library.presentLimitedPicker() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "photo.badge.checkmark")
+                    .font(.subheadline.weight(.semibold))
+                Text("Faver can only see the photos you picked")
+                    .font(.caption)
+                    .multilineTextAlignment(.leading)
+                Spacer()
+                Text("Choose")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(Color.accent)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(PressScaleStyle(scale: 0.98))
+        .accessibilityLabel("Faver can only see the photos you picked. Choose more photos.")
     }
 
     // MARK: - Sort row
