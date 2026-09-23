@@ -39,6 +39,8 @@ nonisolated enum ClusterGap: String, CaseIterable {
 /// clustering run without freezing the app.
 nonisolated struct PhotoCluster: Identifiable, @unchecked Sendable {
     let id: String
+    /// Every photo in the time window, reviewed or not. What the archive shows.
+    let allAssets: [PHAsset]
     let assetsToReview: [PHAsset]
     /// `assetsToReview` folded into burst sets. Computed once when the cluster is built,
     /// off the main actor, rather than on every render of the review screen.
@@ -48,6 +50,10 @@ nonisolated struct PhotoCluster: Identifiable, @unchecked Sendable {
     let firstLocationAsset: PHAsset?
 
     var count: Int { assetsToReview.count }
+
+    /// A moment is reviewed once it has been through the last step, which marks all of
+    /// it at once. There is no half-reviewed moment.
+    var isReviewed: Bool { assetsToReview.isEmpty }
 
     var reviewedPercent: Int {
         guard totalInWindow > 0 else { return 0 }
@@ -244,6 +250,24 @@ nonisolated enum ClusterMode: String, CaseIterable {
 
 // MARK: - Clustering
 
+/// What one clustering pass produced.
+nonisolated struct ClusterResult: @unchecked Sendable {
+    let clusters: [PhotoCluster]
+    /// Photos marked as reviewed inside a window that was never finished. Under the
+    /// current rules that cannot happen: a moment is marked whole, at the end, or not at
+    /// all. A mixed window is therefore left over from the builds that recorded progress
+    /// photo by photo, and those photos are owed back. See LibraryService.load().
+    let strandedIDs: [String]
+}
+
+nonisolated func strandedIDs(in groups: [[PHAsset]], reviewedIDs: Set<String>) -> [String] {
+    groups.flatMap { group -> [String] in
+        let seen = group.filter { reviewedIDs.contains($0.localIdentifier) }
+        guard !seen.isEmpty, seen.count < group.count else { return [] }
+        return seen.map { $0.localIdentifier }
+    }
+}
+
 /// Turns one time window into a cluster, or nothing if there is no reason to show it.
 ///
 /// A window is skipped when it was already curated before Faver ever saw it: someone
@@ -260,11 +284,13 @@ nonisolated private func makeCluster(from group: [PHAsset], reviewedIDs: Set<Str
     let curatedElsewhere = !seenHere && group.contains { $0.isFavorite }
     guard !curatedElsewhere else { return nil }
 
+    // Finished moments are kept rather than dropped, so they can be found again in the
+    // archive and gone back into. They are filtered out of the queue, not out of memory.
     let toReview = group.filter { !reviewedIDs.contains($0.localIdentifier) }
-    guard !toReview.isEmpty else { return nil }
 
     return PhotoCluster(
         id: group.first?.localIdentifier ?? UUID().uuidString,
+        allAssets: group,
         assetsToReview: toReview,
         units: groupIntoUnits(toReview),
         totalInWindow: group.count,
@@ -278,8 +304,8 @@ nonisolated func buildClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
     gapThreshold: TimeInterval = 3 * 3600
-) -> [PhotoCluster] {
-    guard !allAssets.isEmpty else { return [] }
+) -> ClusterResult {
+    guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
 
     var groups: [[PHAsset]] = []
     var currentGroup: [PHAsset] = [allAssets[0]]
@@ -298,7 +324,10 @@ nonisolated func buildClusters(
     }
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
-    return groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) }
+    return ClusterResult(
+        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) },
+        strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
+    )
 }
 
 /// Smart clustering: three-tier boundary detection.
@@ -321,8 +350,8 @@ nonisolated func buildSmartClusters(
     from allAssets: [PHAsset],
     reviewedIDs: Set<String>,
     sensitivity: SmartSensitivity = .balanced
-) -> [PhotoCluster] {
-    guard !allAssets.isEmpty else { return [] }
+) -> ClusterResult {
+    guard !allAssets.isEmpty else { return ClusterResult(clusters: [], strandedIDs: []) }
     guard allAssets.count >= 2 else {
         return buildClusters(from: allAssets, reviewedIDs: reviewedIDs, gapThreshold: 3600)
     }
@@ -390,7 +419,10 @@ nonisolated func buildSmartClusters(
     }
     if !currentGroup.isEmpty { groups.append(currentGroup) }
 
-    return groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) }
+    return ClusterResult(
+        clusters: groups.compactMap { makeCluster(from: $0, reviewedIDs: reviewedIDs) },
+        strandedIDs: strandedIDs(in: groups, reviewedIDs: reviewedIDs)
+    )
 }
 
 // MARK: - Grouping helpers

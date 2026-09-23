@@ -8,8 +8,11 @@ struct HomeView: View {
     // Optional because .scrollPosition binds to one. Nil means "between pages".
     @State private var scrollIndex: Int? = 0
     @State private var reviewCluster: PhotoCluster? = nil
+    /// True when the moment being opened came from the archive, so every photo shows.
+    @State private var reviewRevisiting = false
     /// Chosen in a sheet, opened once that sheet is actually gone. See presentPending().
     @State private var pendingCluster: PhotoCluster? = nil
+    @State private var pendingRevisiting = false
     @State private var showBrowse = false
     @State private var showSettings = false
     @State private var showMap = false
@@ -65,13 +68,19 @@ struct HomeView: View {
             }
         }
         .fullScreenCover(item: $reviewCluster, onDismiss: { library.load() }) { cluster in
-            ReviewView(library: library, cluster: cluster)
+            ReviewView(library: library, cluster: cluster, revisiting: reviewRevisiting)
         }
         .sheet(isPresented: $showBrowse, onDismiss: presentPending) {
-            BrowseView(library: library) { pendingCluster = $0 }
+            BrowseView(library: library) { cluster, archived in
+                pendingCluster = cluster
+                pendingRevisiting = archived
+            }
         }
         .sheet(isPresented: $showMap, onDismiss: presentPending) {
-            MapBrowseView(library: library) { pendingCluster = $0 }
+            MapBrowseView(library: library) { cluster in
+                pendingCluster = cluster
+                pendingRevisiting = false
+            }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(library: library)
@@ -84,6 +93,7 @@ struct HomeView: View {
     private func presentPending() {
         guard let cluster = pendingCluster else { return }
         pendingCluster = nil
+        reviewRevisiting = pendingRevisiting
         reviewCluster = cluster
     }
 
@@ -114,7 +124,7 @@ struct HomeView: View {
         // used to happen the moment someone set the filter to 50+ and finished the
         // big trips.
         if library.filtered.isEmpty {
-            return library.clusters.isEmpty ? .allDone : .filterHiding
+            return library.pending.isEmpty ? .allDone : .filterHiding
         }
         return .ready
     }
@@ -244,6 +254,7 @@ struct HomeView: View {
             LazyHStack(spacing: 0) {
                 ForEach(Array(homeClusters.enumerated()), id: \.element.id) { i, cluster in
                     MomentCard(cluster: cluster) {
+                        reviewRevisiting = false
                         reviewCluster = cluster
                     }
                     .padding(.horizontal, 20)
@@ -444,7 +455,7 @@ struct HomeView: View {
     // MARK: - Filter hiding everything
 
     private var filterHidingView: some View {
-        let hidden = library.clusters.count
+        let hidden = library.pending.count
         return VStack(spacing: 20) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 60))
