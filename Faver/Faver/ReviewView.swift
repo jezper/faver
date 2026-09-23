@@ -71,61 +71,89 @@ struct ReviewView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        HStack {
-            Button { done() } label: {
-                Text("Done")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-            }
-            .accessibilityLabel("Done reviewing")
+        GlassEffectContainer(spacing: 12) {
+            HStack {
+                Button { done() } label: {
+                    Text("Done")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .accessibilityLabel("Done reviewing")
 
-            Spacer()
+                Spacer()
 
-            let total = cluster.assetsToReview.count
-            if total > 1 {
-                Text("\(currentPage + 1) / \(total)")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
+                let total = cluster.assetsToReview.count
+                if total > 1 {
+                    Text("\(currentPage + 1) / \(total)")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .glassEffect(.regular, in: Capsule())
+                        .accessibilityLabel("Photo \(currentPage + 1) of \(total)")
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
+        // Glass resolves whatever is behind it, and a white sky is the one thing it
+        // cannot separate itself from. A short wash keeps the controls readable over
+        // a bright horizon without reading as a bar across the photo.
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.3), location: 0),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
+        )
     }
 
     // MARK: - Bottom bar
 
     private var bottomBar: some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: 60) // gradient height above button
+            Spacer().frame(height: 44) // gradient height above button
 
             Button { toggleFavorite() } label: {
+                // Favorited is carried three ways at once — the button fills warm red,
+                // the outline fills in, and the symbol changes shape — so it still reads
+                // for someone who cannot tell the colours apart, and it survives the
+                // system transparency setting being dragged all the way to clear.
                 Image(systemName: isCurrentFavorited ? "heart.fill" : "heart")
                     .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(isCurrentFavorited ? Color.heart : .white)
+                    .foregroundStyle(.white)
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isCurrentFavorited)
                     .frame(width: 64, height: 64)
-                    .background(.ultraThinMaterial, in: Circle())
             }
-            .buttonStyle(PressScaleStyle())
+            .glassEffect(
+                isCurrentFavorited
+                    ? .regular.tint(Color.heart).interactive()
+                    : .regular.interactive(),
+                in: Circle()
+            )
             .accessibilityLabel(isCurrentFavorited ? "Remove from favorites" : "Add to favorites")
             .padding(.bottom, 44)
         }
         .frame(maxWidth: .infinity)
+        // Lighter and shorter than it was. Glass now carries the legibility, so the
+        // scrim no longer has to stamp a black band across the bottom of every photo.
         .background(
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.75), location: 1)
+                    .init(color: .black.opacity(0.45), location: 1)
                 ],
                 startPoint: .top, endPoint: .bottom
             )
             .ignoresSafeArea()
+            .allowsHitTesting(false)
         )
     }
 
