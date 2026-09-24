@@ -10,14 +10,14 @@ import XCTest
 /// The library is seeded by scripts/uitest.sh before these run: three moments, one of
 /// which contains a burst. Run them with ./scripts/uitest.sh.
 ///
-/// **These do not pass yet, and the tests are not the reason.** The harness cannot get
-/// the simulator to hand the app a photo library: `simctl privacy grant photos` reports
-/// success and the app still sees no decision made, so it lands on the welcome screen and
-/// every test times out waiting for a moment that was never going to appear. Granting
-/// before install, after install, and answering the system alert from the test were all
-/// tried. The likely next step is to stop fighting the simulator and give the app a
-/// test-only library it can be handed directly, which would also make these run in
-/// seconds rather than minutes.
+/// **Not yet confirmed green, for a reason outside the tests.** `simctl privacy grant
+/// photos` reports success and then writes a *denied* value into the simulator's
+/// permission database, so the app never sees the library and every test waits out its
+/// timeout on a welcome screen. uitest.sh sets the value directly now, which is the fix,
+/// but it could not be run to completion: Xcode's licence agreement was reset by the
+/// macOS 27 upgrade and blocks simctl until somebody with the password accepts it.
+///
+///     sudo xcodebuild -license accept
 final class ReviewFlowUITests: XCTestCase {
 
     private var app: XCUIApplication!
@@ -26,6 +26,17 @@ final class ReviewFlowUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
+    }
+
+    /// A picture of whatever the app was actually showing when a test gave up. Without it
+    /// every failure looks the same from the log, and diagnosing one means driving the
+    /// simulator by hand.
+    override func tearDown() {
+        guard (testRun?.failureCount ?? 0) > 0 else { return }
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "screen-at-failure"
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     // MARK: - Helpers
@@ -40,15 +51,28 @@ final class ReviewFlowUITests: XCTestCase {
     private var firstCard: XCUIElement { element("moment-card") }
 
     /// Takes the system's photo access question, whatever this iOS version calls the
-    /// button. simctl can pre-grant on paper, but the app is still asked in practice.
+    /// button and wherever it puts it.
+    ///
+    /// Since iOS 14 this sheet is drawn by PhotosUI inside the app's own process, not by
+    /// the home screen, so looking only at springboard finds nothing and the test sits
+    /// there until it times out. Both are checked, repeatedly, because the sheet takes a
+    /// moment to arrive.
     private func answerPhotoAccess() {
+        let titles = ["Allow Full Access", "Allow Access to All Photos", "Allow"]
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for title in ["Allow Full Access", "Allow Access to All Photos", "Allow"] {
-            let button = springboard.buttons[title]
-            if button.waitForExistence(timeout: 8) {
-                button.tap()
-                return
+        let deadline = Date().addingTimeInterval(25)
+
+        while Date() < deadline {
+            for host in [app!, springboard] {
+                for title in titles {
+                    let button = host.buttons[title]
+                    if button.exists && button.isHittable {
+                        button.tap()
+                        return
+                    }
+                }
             }
+            usleep(400_000)
         }
     }
 

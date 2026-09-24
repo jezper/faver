@@ -16,11 +16,15 @@ gruppering, burst-set, vilka stunder som ska visas, och genomgångsstatus — al
 de ställen där misstag kostat riktigt arbete.
 
 `./scripts/uitest.sh` kör gränssnittstesterna mot ett riktigt fotobibliotek i
-simulatorn. **De passerar inte ännu**, och testerna är inte orsaken: simulatorn vägrar
-ge appen fotobehörighet, så den fastnar på välkomstskärmen. Se filhuvudet i
-`FaverUITests/ReviewFlowUITests.swift`.
+simulatorn. **Inte bekräftat gröna ännu**, men orsaken är hittad och lagad i skriptet:
+`simctl privacy grant photos` säger att det gick bra och skriver sedan värdet 0, alltså
+*nekad*, i simulatorns behörighetsdatabas. Appen fastnar på välkomstskärmen och varje
+test väntar ut sin tid. Skriptet sätter nu värdet direkt.
 
-**Oskickat, klart och byggt lokalt:**
+Kunde inte köras färdigt: **Xcodes licensavtal nollställdes av macOS-uppgraderingen** och
+blockerar `simctl`. Kräver `sudo xcodebuild -license accept`.
+
+**Skickat i bygge 9:**
 
 1. Pinch-zoomen skrev om positionen vid varje steg och tog ankaret från fingrarna.
 2. Den skarpa bilden nollställde scrollvyn mitt i ett svep.
@@ -79,9 +83,8 @@ dialogruta tillbaka.
 
 ## Kvar att göra
 
-- **Gränssnittstesterna går inte att köra grönt.** Simulatorns fotobehörighet biter inte.
-  Troligen rätt väg: ge appen ett testläge med ett påhittat bibliotek i stället för att
-  slåss med simulatorn, vilket också gör dem snabba.
+- **Kör gränssnittstesterna färdigt** när licensen är godkänd. Fixen finns i
+  `scripts/uitest.sh`; det som återstår är att se dem bli gröna.
 - **iOS 27.** Lagerbyggd appikon i Icon Composer, `toolbarMinimizeBehavior`, och
   migrering till `@Observable`. Väntar på att Xcode 27 installeras, vilket kräver
   `sudo mas upgrade 497799835` körd av en människa i en riktig terminal.
@@ -92,7 +95,13 @@ dialogruta tillbaka.
 ## Att veta
 
 - Appen kräver iOS 26.2 eller senare. Beslut 2026-09-22, oförändrat.
-- Neo står på macOS 27. Xcode är kvar på 26.6 tills `sudo mas upgrade 497799835` körts
-  av en människa; `mas` kan inte mata in administratörslösenordet.
+- **Två saker väntar på ett lösenord i en riktig terminal på Neo**, båda följder av
+  macOS-uppgraderingen. Går att göra i samma vända:
+
+      sudo xcodebuild -license accept
+      sudo mas upgrade 497799835
+
+  Den första släpper `simctl` fri så gränssnittstesterna kan köras. Den andra installerar
+  Xcode 27 och låser upp iOS 27-arbetet.
 - Projektet använder synkroniserade grupper (objectVersion 77), så nya .swift-filer
   plockas upp automatiskt. Ingen redigering av projektfilen behövs.
